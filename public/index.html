@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图片批量压缩工具</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background-color: #f5f7f9;
+            color: #333;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .input-group {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        input[type="text"] {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+        .scan-btn {
+            width: auto;
+            padding: 0 20px;
+            background-color: #2ecc71;
+        }
+        .scan-btn:hover {
+            background-color: #27ae60;
+        }
+        #folderTree {
+            margin-top: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #eee;
+            padding: 15px;
+            border-radius: 6px;
+            display: none;
+        }
+        .folder-item {
+            margin: 8px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .folder-depth-0 { margin-left: 0; }
+        .folder-depth-1 { margin-left: 20px; }
+        .folder-depth-2 { margin-left: 40px; }
+        .folder-depth-3 { margin-left: 60px; }
+        
+        #compressBtn {
+            margin-top: 20px;
+            display: none;
+        }
+        #result {
+            margin-top: 30px;
+            padding: 20px;
+            border-radius: 6px;
+            display: none;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+        }
+        th {
+            background-color: #f8f9fa;
+        }
+        .status-success { color: #27ae60; font-weight: bold; }
+        .status-error { color: #e74c3c; font-weight: bold; }
+        .loading {
+            text-align: center;
+            display: none;
+            margin: 20px 0;
+        }
+        /* 进度条样式 */
+        .progress-container {
+            margin: 20px 0;
+            display: none;
+        }
+        .progress-bar-bg {
+            background-color: #eee;
+            border-radius: 10px;
+            height: 20px;
+            width: 100%;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+        .progress-bar-fill {
+            background-color: #3498db;
+            height: 100%;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        .progress-info {
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+            color: #666;
+        }
+        /* 日志窗口样式 */
+        .log-container {
+            margin-top: 20px;
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 12px;
+            height: 200px;
+            overflow-y: auto;
+            display: none;
+        }
+        .log-item {
+            margin-bottom: 4px;
+            border-left: 3px solid #555;
+            padding-left: 8px;
+        }
+        .log-item.success { color: #4ec9b0; border-left-color: #4ec9b0; background: transparent; border: none; padding: 0; margin: 0; }
+        .log-item.error { color: #f44747; border-left-color: #f44747; background: transparent; border: none; padding: 0; margin: 0; }
+        .log-item.info { color: #9cdcfe; border-left-color: #9cdcfe; }
+        
+        /* 控制按钮 */
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            display: none;
+        }
+        .btn-pause { background-color: #f39c12; }
+        .btn-resume { background-color: #27ae60; display: none; }
+        .btn-cancel { background-color: #e74c3c; }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 2s linear infinite;
+            display: inline-block;
+            vertical-align: middle;
+            margin-right: 10px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>图片批量压缩工具</h1>
+        <div class="input-group">
+            <input type="text" id="folderPath" placeholder="请输入父级文件夹绝对路径" required>
+            <button id="scanBtn" class="scan-btn">扫描目录</button>
+        </div>
+
+        <div id="folderTree">
+            <p style="margin-top: 0; font-weight: bold; border-bottom: 1px solid #eee; padding-bottom: 10px;">请选择要压缩图片的文件夹：</p>
+            <div id="folderList"></div>
+            <div style="margin-top: 15px; border-top: 1px solid #eee; padding-top: 10px;">
+                <button id="selectAllBtn" style="width: auto; padding: 5px 15px; font-size: 14px; background-color: #95a5a6;">全选 / 取消全选</button>
+            </div>
+        </div>
+
+        <button id="compressBtn">开始压缩选中文件夹下的图片</button>
+
+        <div id="progressContainer" class="progress-container">
+            <div class="progress-bar-bg">
+                <div id="progressBarFill" class="progress-bar-fill"></div>
+            </div>
+            <div class="progress-info">
+                <span id="progressText">正在准备...</span>
+                <span id="progressPercent">0%</span>
+            </div>
+            <div id="controls" class="controls">
+                <button id="pauseBtn" class="btn-pause">暂停</button>
+                <button id="resumeBtn" class="btn-resume">继续</button>
+                <button id="cancelBtn" class="btn-cancel">取消任务</button>
+            </div>
+        </div>
+
+        <div id="logContainer" class="log-container"></div>
+
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <span>正在压缩图片，请稍候...</span>
+        </div>
+
+        <div id="result"></div>
+    </div>
+
+    <script>
+        const scanBtn = document.getElementById('scanBtn');
+        const compressBtn = document.getElementById('compressBtn');
+        const folderPathInput = document.getElementById('folderPath');
+        const folderTree = document.getElementById('folderTree');
+        const folderList = document.getElementById('folderList');
+        const selectAllBtn = document.getElementById('selectAllBtn');
+        const loading = document.getElementById('loading');
+        const resultDiv = document.getElementById('result');
+        
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBarFill = document.getElementById('progressBarFill');
+        const progressText = document.getElementById('progressText');
+        const progressPercent = document.getElementById('progressPercent');
+        const logContainer = document.getElementById('logContainer');
+        const controls = document.getElementById('controls');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const resumeBtn = document.getElementById('resumeBtn');
+        const cancelBtn = document.getElementById('cancelBtn');
+
+        let isAllSelected = false;
+        let eventSource = null;
+
+        // 日志打印
+        function addLog(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `log-item ${type}`;
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logContainer.appendChild(div);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        // 初始化 SSE 连接
+        function initSSE() {
+            if (eventSource) eventSource.close();
+            
+            eventSource = new EventSource('/progress');
+            
+            eventSource.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                
+                switch(data.type) {
+                    case 'log':
+                        addLog(data.message);
+                        if (data.progress) {
+                            progressBarFill.style.width = `${data.progress}%`;
+                            progressPercent.textContent = `${data.progress}%`;
+                        }
+                        break;
+                    
+                    case 'progress':
+                        progressText.textContent = `处理进度: ${data.current} / ${data.total}`;
+                        const percent = Math.round((data.current / data.total) * 100);
+                        progressBarFill.style.width = `${percent}%`;
+                        progressPercent.textContent = `${percent}%`;
+                        
+                        if (data.result) {
+                            const res = data.result;
+                            addLog(`${res.status === 'success' ? '✅' : '❌'} ${res.file}: ${res.originalSize} -> ${res.newSize || '失败'}`, res.status);
+                        }
+                        break;
+                    
+                    case 'status':
+                        addLog(`状态更新: ${data.message}`, 'info');
+                        if (data.status === 'paused') {
+                            pauseBtn.style.display = 'none';
+                            resumeBtn.style.display = 'inline-block';
+                        } else if (data.status === 'running') {
+                            pauseBtn.style.display = 'inline-block';
+                            resumeBtn.style.display = 'none';
+                        } else if (data.status === 'completed') {
+                            finishJob(data.results);
+                        } else if (data.status === 'cancelled') {
+                            resetUI();
+                            addLog('任务已取消', 'error');
+                        }
+                        break;
+                    
+                    case 'init':
+                        if (data.status === 'running' || data.status === 'paused') {
+                            showJobUI();
+                            progressText.textContent = `处理进度: ${data.current} / ${data.total}`;
+                            const p = Math.round((data.current / data.total) * 100);
+                            progressBarFill.style.width = `${p}%`;
+                            progressPercent.textContent = `${p}%`;
+                            if (data.status === 'paused') {
+                                pauseBtn.style.display = 'none';
+                                resumeBtn.style.display = 'inline-block';
+                            }
+                        }
+                        break;
+                }
+            };
+
+            eventSource.onerror = () => {
+                addLog('与服务器连接断开，正在重连...', 'error');
+            };
+        }
+
+        function showJobUI() {
+            progressContainer.style.display = 'block';
+            logContainer.style.display = 'block';
+            controls.style.display = 'flex';
+            compressBtn.disabled = true;
+            resultDiv.style.display = 'none';
+        }
+
+        function resetUI() {
+            progressContainer.style.display = 'none';
+            logContainer.style.display = 'none';
+            controls.style.display = 'none';
+            compressBtn.disabled = false;
+            progressBarFill.style.width = '0%';
+            progressPercent.textContent = '0%';
+            logContainer.innerHTML = '';
+        }
+
+        function finishJob(results) {
+            pauseBtn.style.display = 'none';
+            resumeBtn.style.display = 'none';
+            cancelBtn.textContent = '关闭进度窗口';
+            
+            resultDiv.className = 'success';
+            resultDiv.style.display = 'block';
+            
+            let html = `<strong>压缩任务完成</strong> (处理了 ${results.length} 个文件)`;
+            html += `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>文件名</th>
+                            <th>原大小</th>
+                            <th>压缩后</th>
+                            <th>状态</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            results.forEach(res => {
+                html += `
+                    <tr>
+                        <td>${res.file}</td>
+                        <td>${res.originalSize || '-'}</td>
+                        <td>${res.newSize || '-'}</td>
+                        <td class="status-${res.status}">${res.status === 'success' ? '完成' : '失败'}</td>
+                    </tr>
+                `;
+            });
+            
+            html += `</tbody></table>`;
+            resultDiv.innerHTML = html;
+            addLog('任务全部完成！', 'success');
+        }
+
+        // 页面加载时初始化 SSE
+        initSSE();
+
+        // 暂停按钮
+        pauseBtn.addEventListener('click', async () => {
+            await fetch('/job/pause', { method: 'POST' });
+        });
+
+        // 继续按钮
+        resumeBtn.addEventListener('click', async () => {
+            await fetch('/job/resume', { method: 'POST' });
+        });
+
+        // 取消按钮
+        cancelBtn.addEventListener('click', async () => {
+            if (cancelBtn.textContent === '取消任务') {
+                if (!confirm('确定要取消当前压缩任务吗？')) return;
+                await fetch('/job/cancel', { method: 'POST' });
+            }
+            resetUI();
+            cancelBtn.textContent = '取消任务';
+        });
+
+        // 扫描目录
+        scanBtn.addEventListener('click', async () => {
+            const folderPath = folderPathInput.value.trim();
+            if (!folderPath) {
+                alert('请输入文件夹路径');
+                return;
+            }
+
+            try {
+                const response = await fetch('/scan', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ folderPath })
+                });
+
+                const data = await response.json();
+                if (response.ok) {
+                    folderList.innerHTML = '';
+                    data.folders.forEach(folder => {
+                        const div = document.createElement('div');
+                        div.className = `folder-item folder-depth-${folder.depth === -1 ? 0 : folder.depth + 1}`;
+                        div.innerHTML = `
+                            <input type="checkbox" id="folder-${folder.path}" value="${folder.path}">
+                            <label for="folder-${folder.path}">${folder.name} <small style="color: #999;">(${folder.path})</small></label>
+                        `;
+                        folderList.appendChild(div);
+                    });
+                    folderTree.style.display = 'block';
+                    compressBtn.style.display = 'block';
+                } else {
+                    alert(data.error);
+                }
+            } catch (error) {
+                alert('扫描失败: ' + error.message);
+            }
+        });
+
+        // 全选/取消全选
+        selectAllBtn.addEventListener('click', () => {
+            const checkboxes = folderList.querySelectorAll('input[type="checkbox"]');
+            isAllSelected = !isAllSelected;
+            checkboxes.forEach(cb => cb.checked = isAllSelected);
+        });
+
+        // 执行压缩
+        compressBtn.addEventListener('click', async () => {
+            const selectedPaths = Array.from(folderList.querySelectorAll('input[type="checkbox"]:checked'))
+                .map(cb => cb.value);
+
+            if (selectedPaths.length === 0) {
+                alert('请至少选择一个文件夹');
+                return;
+            }
+
+            // Reset UI
+            resultDiv.style.display = 'none';
+            resultDiv.innerHTML = '';
+            
+            showJobUI();
+            addLog(`已选择 ${selectedPaths.length} 个文件夹，正在获取图片列表...`);
+
+            try {
+                const response = await fetch('/compress', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ selectedPaths })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    addLog(data.message);
+                    if (data.count === 0) {
+                        resetUI();
+                        alert('所选文件夹下没有发现图片');
+                    }
+                } else {
+                    addLog(`启动失败: ${data.error}`, 'error');
+                    resetUI();
+                    alert(data.error);
+                }
+            } catch (error) {
+                addLog(`请求失败: ${error.message}`, 'error');
+                resetUI();
+                alert('请求失败: ' + error.message);
+            }
+        });
+    </script>
+</body>
+</html>
