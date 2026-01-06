@@ -674,33 +674,117 @@
         }
 
         /* Log Styling */
-        .backup-option-card {
-            margin: 24px 0 16px;
-            padding: 16px;
-            background: rgba(0, 122, 255, 0.04);
-            border: 1px solid rgba(0, 122, 255, 0.1);
-            border-radius: 14px;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        .backup-option-card:hover {
-            background: rgba(0, 122, 255, 0.08);
-            border-color: rgba(0, 122, 255, 0.2);
-            transform: translateY(-1px);
-        }
-
-        .backup-option-card .checkbox-wrapper {
+        /* Backup & Safety Panel */
+        .safety-panel {
+            margin: 16px 0 24px;
+            padding: 20px;
+            background: rgba(255, 159, 10, 0.05);
+            border: 1px solid rgba(255, 159, 10, 0.2);
+            border-radius: 20px;
             display: flex;
             align-items: center;
-            cursor: pointer;
-            user-select: none;
+            justify-content: space-between;
+            transition: var(--transition-ios);
+            gap: 16px;
         }
 
-        .backup-option-card .label-text {
-            font-size: 14px;
-            font-weight: 500;
+        .safety-panel.is-safe {
+            background: rgba(52, 199, 89, 0.08);
+            border-color: rgba(52, 199, 89, 0.3);
+        }
+
+        .safety-info {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            flex: 1;
+        }
+
+        .safety-icon-wrapper {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            background: rgba(255, 159, 10, 0.15);
+            color: #ff9f0a;
+            transition: var(--transition-ios);
+        }
+
+        .is-safe .safety-icon-wrapper {
+            background: rgba(52, 199, 89, 0.2);
+            color: var(--ios-green);
+        }
+
+        .safety-text {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .safety-title {
+            font-weight: 600;
+            font-size: 15px;
             color: var(--text-main);
-            margin-left: 10px;
+        }
+
+        .safety-desc {
+            font-size: 12px;
+            color: var(--text-dim);
+            opacity: 0.8;
+        }
+
+        /* iOS Toggle Switch */
+        .ios-switch {
+            position: relative;
+            display: inline-block;
+            width: 51px;
+            height: 31px;
+            flex-shrink: 0;
+        }
+
+        .ios-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .switch-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(255, 255, 255, 0.1);
+            transition: .4s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 31px;
+            border: 1.5px solid var(--glass-border);
+        }
+
+        .switch-slider:before {
+            position: absolute;
+            content: "";
+            height: 27px;
+            width: 27px;
+            left: 1px;
+            bottom: 0.5px;
+            background-color: white;
+            transition: .4s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 50%;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+        }
+
+        input:checked + .switch-slider {
+            background-color: var(--ios-green);
+            border-color: var(--ios-green);
+        }
+
+        input:checked + .switch-slider:before {
+            transform: translateX(20px);
+        }
+
+        .light-mode .switch-slider {
+            background-color: rgba(0, 0, 0, 0.05);
         }
 
         .log-panel {
@@ -930,6 +1014,20 @@
                 </button>
             </div>
 
+            <div id="safetyPanel" class="safety-panel">
+                <div class="safety-info">
+                    <div id="safetyIcon" class="safety-icon-wrapper">⚠️</div>
+                    <div class="safety-text">
+                        <span id="safetyTitle" class="safety-title" data-i18n="safetyWarningTitle">未开启备份</span>
+                        <span id="safetyDesc" class="safety-desc" data-i18n="safetyWarningDesc">压缩将直接覆盖原图，建议开启备份以防万一</span>
+                    </div>
+                </div>
+                <label class="ios-switch">
+                    <input type="checkbox" id="backupCheckbox">
+                    <span class="switch-slider"></span>
+                </label>
+            </div>
+
             <div id="folderTree" style="display: none;">
                 <div class="root-info-bar">
                     <div class="root-meta">
@@ -954,14 +1052,6 @@
                         <span id="sortTime" class="sort-icon" data-i18n="sortByTime" style="text-align: right; justify-content: flex-end;">日期</span>
                     </div>
                     <div id="folderList" class="folder-list"></div>
-                </div>
-
-                <div class="backup-option-card">
-                    <label class="checkbox-wrapper">
-                        <input type="checkbox" id="backupCheckbox" checked>
-                        <span class="checkmark"></span>
-                        <span class="label-text" data-i18n="backupOption">备份原图 (在同级生成 backup 文件夹)</span>
-                    </label>
                 </div>
 
                 <button id="compressBtn" class="primary-btn" style="width: 100%; margin-top: 16px; height: 50px; border-radius: 12px; font-size: 15px;">
@@ -1030,8 +1120,11 @@
                 deselectAll: '取消全选',
                 sortByName: '名称',
                 sortByTime: '修改日期',
-                 backupOption: '备份原图 (在同级生成 backup 文件夹)',
-                 startBtn: '开始批量压缩',
+                safetyWarningTitle: '未开启备份',
+                safetyWarningDesc: '压缩将直接覆盖原图，建议开启备份',
+                safetySafeTitle: '备份已开启',
+                safetySafeDesc: '原图将安全备份至 backup 文件夹',
+                startBtn: '开始批量压缩',
                 initializing: '准备处理...',
                 optimizing: '正在优化图片...',
                 processingComplete: '处理完成',
@@ -1067,8 +1160,11 @@
                 selectAll: 'Select All',
                 deselectAll: 'Deselect All',
                 sortByName: 'Name',
-                sortByTime: 'Date Modified',
-                backupOption: 'Backup originals (create backup folder)',
+                sortByTime: 'Modified',
+                safetyWarningTitle: 'Backup Disabled',
+                safetyWarningDesc: 'Originals will be overwritten. Backup recommended.',
+                safetySafeTitle: 'Backup Enabled',
+                safetySafeDesc: 'Originals will be saved to "backup" folder',
                 startBtn: 'Start Compression',
                 initializing: 'Initializing...',
                 optimizing: 'Optimizing Images...',
@@ -1172,6 +1268,9 @@
                 currentLang = btn.getAttribute('data-lang');
                 localStorage.setItem('lang', currentLang);
                 updateUI();
+                if (typeof updateSafetyUI === 'function') {
+                    updateSafetyUI();
+                }
             });
         });
 
@@ -1425,7 +1524,10 @@
             }
         }
 
+        let isReconnecting = false;
         function initSSE() {
+            if (isReconnecting) return;
+            
             if (eventSource) {
                 eventSource.onmessage = null;
                 eventSource.onerror = null;
@@ -1435,70 +1537,89 @@
             
             // 延迟一小段时间初始化，确保页面加载稳定
             setTimeout(() => {
-                eventSource = new EventSource('/progress');
-                
-                eventSource.onerror = (err) => {
-                    console.warn("SSE connection error, closing to retry...");
-                    if (eventSource) {
-                        eventSource.close();
-                        eventSource = null;
-                    }
-                    // 3秒后尝试重新连接
-                    setTimeout(initSSE, 3000);
-                };
-
-                eventSource.onmessage = (event) => {
-                    const data = JSON.parse(event.data);
-                    const langData = i18n[currentLang];
+                try {
+                    eventSource = new EventSource('/progress');
                     
-                    switch(data.type) {
-                        case 'init':
-                            if (data.status === 'running' || data.status === 'paused') {
-                                showJobUI();
-                                updateProgress(data.current, data.total, data.status);
-                                if (data.status === 'paused') {
+                    eventSource.onopen = () => {
+                        console.log("SSE connected successfully");
+                        isReconnecting = false;
+                    };
+
+                    eventSource.onerror = (err) => {
+                        if (isReconnecting) return;
+                        isReconnecting = true;
+                        
+                        console.warn("SSE connection error, closing to retry...");
+                        if (eventSource) {
+                            eventSource.close();
+                            eventSource = null;
+                        }
+                        // 3秒后尝试重新连接
+                        setTimeout(() => {
+                            isReconnecting = false;
+                            initSSE();
+                        }, 3000);
+                    };
+
+                    eventSource.onmessage = (event) => {
+                        const data = JSON.parse(event.data);
+                        const langData = i18n[currentLang];
+                        
+                        switch(data.type) {
+                            case 'init':
+                                if (data.status === 'running' || data.status === 'paused') {
+                                    showJobUI();
+                                    updateProgress(data.current, data.total, data.status);
+                                    if (data.status === 'paused') {
+                                        pauseBtn.style.display = 'none';
+                                        resumeBtn.style.display = 'inline-flex';
+                                    }
+                                }
+                                break;
+
+                            case 'status':
+                                if (data.status === 'running') {
+                                    showJobUI();
+                                    updateProgress(0, data.total, 'running');
+                                    pauseBtn.style.display = 'inline-flex';
+                                    resumeBtn.style.display = 'none';
+                                    addLog(langData.startBtn + '...', 'info');
+                                } else if (data.status === 'paused') {
+                                    updateProgress(null, null, 'paused');
                                     pauseBtn.style.display = 'none';
                                     resumeBtn.style.display = 'inline-flex';
+                                } else if (data.status === 'completed') {
+                                    updateProgress(data.total, data.total, 'running');
+                                    finishJob(data.results);
+                                } else if (data.status === 'cancelled') {
+                                    resetUI();
                                 }
-                            }
-                            break;
+                                break;
 
-                        case 'status':
-                            if (data.status === 'running') {
-                                showJobUI();
-                                updateProgress(0, data.total, 'running');
-                                pauseBtn.style.display = 'inline-flex';
-                                resumeBtn.style.display = 'none';
-                                addLog(langData.startBtn + '...', 'info');
-                            } else if (data.status === 'paused') {
-                                updateProgress(null, null, 'paused');
-                                pauseBtn.style.display = 'none';
-                                resumeBtn.style.display = 'inline-flex';
-                            } else if (data.status === 'completed') {
-                                updateProgress(data.total, data.total, 'running');
-                                finishJob(data.results);
-                            } else if (data.status === 'cancelled') {
-                                resetUI();
-                            }
-                            break;
+                            case 'log':
+                                addLog(data.message, 'info');
+                                break;
 
-                        case 'log':
-                            addLog(data.message, 'info');
-                            break;
-
-                        case 'progress':
-                            // 不再强制传 'running'，而是让 updateProgress 使用当前的全局状态
-                            updateProgress(data.current, data.total); 
-                            
-                            if (data.result) {
-                                const res = data.result;
-                                const statusText = res.status === 'success' ? langData.optimized : langData.failed;
-                                addLog(`${statusText}: ${res.file} (${res.originalSize} → ${res.newSize || 'Error'})`, res.status);
-                            }
-                            break;
-                    }
-                };
-            }, 500); // 增加延迟到 500ms
+                            case 'progress':
+                                // 不再强制传 'running'，而是让 updateProgress 使用当前的全局状态
+                                updateProgress(data.current, data.total); 
+                                
+                                if (data.result) {
+                                    const res = data.result;
+                                    const statusText = res.status === 'success' ? langData.optimized : langData.failed;
+                                    addLog(`${statusText}: ${res.file} (${res.originalSize} → ${res.newSize || 'Error'})`, res.status);
+                                }
+                                break;
+                        }
+                    };
+                } catch (e) {
+                    console.error("Failed to create EventSource:", e);
+                    setTimeout(() => {
+                        isReconnecting = false;
+                        initSSE();
+                    }, 5000);
+                }
+            }, 500);
         }
 
         function showJobUI() {
@@ -1663,6 +1784,33 @@
                 scanBtn.textContent = langData.scanBtn;
             }
         });
+
+        // Backup Toggle Logic
+        const backupCheckbox = document.getElementById('backupCheckbox');
+        const safetyPanel = document.getElementById('safetyPanel');
+        const safetyIcon = document.getElementById('safetyIcon');
+        const safetyTitle = document.getElementById('safetyTitle');
+        const safetyDesc = document.getElementById('safetyDesc');
+
+        function updateSafetyUI() {
+            const isChecked = backupCheckbox.checked;
+            const langData = i18n[currentLang];
+            
+            if (isChecked) {
+                safetyPanel.classList.add('is-safe');
+                safetyIcon.textContent = '🛡️';
+                safetyTitle.textContent = langData.safetySafeTitle;
+                safetyDesc.textContent = langData.safetySafeDesc;
+            } else {
+                safetyPanel.classList.remove('is-safe');
+                safetyIcon.textContent = '⚠️';
+                safetyTitle.textContent = langData.safetyWarningTitle;
+                safetyDesc.textContent = langData.safetyWarningDesc;
+            }
+        }
+
+        backupCheckbox.addEventListener('change', updateSafetyUI);
+        updateSafetyUI(); // Initialize
 
         compressBtn.addEventListener('click', async () => {
             const langData = i18n[currentLang];

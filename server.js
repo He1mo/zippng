@@ -214,10 +214,15 @@ async function startWorker() {
 
 // SSE 接口
 app.get('/progress', (req, res) => {
+    // 强制禁用超时，这对于 SSE 至关重要
+    req.socket.setTimeout(0);
+    req.socket.setKeepAlive(true);
+    req.socket.setNoDelay(true);
+
     // 设置响应头，解决 ERR_ABORTED 问题
     res.writeHead(200, {
         'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache, no-transform',
+        'Cache-Control': 'no-cache, no-transform, no-store',
         'Connection': 'keep-alive',
         'Access-Control-Allow-Origin': '*',
         'X-Accel-Buffering': 'no',
@@ -240,10 +245,15 @@ app.get('/progress', (req, res) => {
 
     // 发送心跳防止连接断开
     const heartbeat = setInterval(() => {
-        if (!res.writableEnded) {
-            res.write(': heartbeat\n\n');
+        if (!res.writableEnded && res.writable) {
+            try {
+                res.write(': heartbeat\n\n');
+            } catch (err) {
+                console.warn('心跳发送失败，连接可能已关闭');
+                clearInterval(heartbeat);
+            }
         }
-    }, 15000); // 稍微延长心跳时间
+    }, 15000);
 
     // 监听连接断开
     req.on('close', () => {
