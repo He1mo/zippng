@@ -149,6 +149,30 @@ async function startWorker() {
         const folderPath = path.dirname(filePath);
         const folderName = path.basename(folderPath);
         
+        // 备份逻辑
+        if (currentJob.doBackup && currentJob.rootPath) {
+            try {
+                const relativePath = path.relative(currentJob.rootPath, filePath);
+                const backupPath = path.join(currentJob.rootPath, 'backup', relativePath);
+                const backupDir = path.dirname(backupPath);
+                
+                if (!fs.existsSync(backupDir)) {
+                    await fs.mkdir(backupDir, { recursive: true });
+                }
+                
+                // 仅在备份文件不存在时复制，避免重复处理
+                if (!fs.existsSync(backupPath)) {
+                    await fs.copyFile(filePath, backupPath);
+                }
+            } catch (err) {
+                console.error(`备份失败: ${filePath}`, err);
+                broadcast({ 
+                    type: 'log', 
+                    message: `[警告] 备份失败: ${fileName}, 将跳过备份直接压缩`
+                });
+            }
+        }
+        
         broadcast({ 
             type: 'log', 
             message: `正在处理 (${index + 1}/${currentJob.total}): ${folderName}/${fileName}`
@@ -404,7 +428,7 @@ app.post('/scan', async (req, res) => {
 });
 
 app.post('/compress', async (req, res) => {
-    const { selectedPaths } = req.body;
+    const { selectedPaths, doBackup, rootPath } = req.body;
 
     if (!selectedPaths || !Array.isArray(selectedPaths) || selectedPaths.length === 0) {
         return res.status(400).json({ error: '未选择任何文件夹' });
@@ -441,6 +465,8 @@ app.post('/compress', async (req, res) => {
         currentJob.folderMap = folderMap;
         currentJob.folderCompletedMap = folderCompletedMap;
         currentJob.selectedPaths = selectedPaths;
+        currentJob.doBackup = !!doBackup;
+        currentJob.rootPath = rootPath;
         currentJob.total = allUniqueFiles.length;
         currentJob.processedCount = 0;
         currentJob.completedCount = 0;

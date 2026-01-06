@@ -674,6 +674,35 @@
         }
 
         /* Log Styling */
+        .backup-option-card {
+            margin: 24px 0 16px;
+            padding: 16px;
+            background: rgba(0, 122, 255, 0.04);
+            border: 1px solid rgba(0, 122, 255, 0.1);
+            border-radius: 14px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .backup-option-card:hover {
+            background: rgba(0, 122, 255, 0.08);
+            border-color: rgba(0, 122, 255, 0.2);
+            transform: translateY(-1px);
+        }
+
+        .backup-option-card .checkbox-wrapper {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .backup-option-card .label-text {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-main);
+            margin-left: 10px;
+        }
+
         .log-panel {
             margin-top: 40px;
             text-align: left;
@@ -895,7 +924,7 @@
         <!-- Phase 1: Input & Scan -->
         <section id="phase-scan" class="glass-card phase-section phase-active">
             <div class="search-container">
-                <input type="text" id="folderPath" data-i18n-placeholder="pathPlaceholder" placeholder="请输入路径...">
+                <input type="text" id="folderPath" data-i18n-placeholder="pathPlaceholder" placeholder="在这里粘贴照片文件夹的地址，如 D:\我的相册">
                 <button id="scanBtn" class="primary-btn">
                     <span data-i18n="scanBtn">扫描目录</span>
                 </button>
@@ -927,7 +956,15 @@
                     <div id="folderList" class="folder-list"></div>
                 </div>
 
-                <button id="compressBtn" class="primary-btn" style="width: 100%; margin-top: 24px; height: 50px; border-radius: 12px; font-size: 15px;">
+                <div class="backup-option-card">
+                    <label class="checkbox-wrapper">
+                        <input type="checkbox" id="backupCheckbox" checked>
+                        <span class="checkmark"></span>
+                        <span class="label-text" data-i18n="backupOption">备份原图 (在同级生成 backup 文件夹)</span>
+                    </label>
+                </div>
+
+                <button id="compressBtn" class="primary-btn" style="width: 100%; margin-top: 16px; height: 50px; border-radius: 12px; font-size: 15px;">
                     <span data-i18n="startBtn">开始批量压缩</span>
                 </button>
             </div>
@@ -985,7 +1022,7 @@
             zh: {
                 title: 'Zipper',
                 subtitle: '简单好用的本地图片压缩工具',
-                pathPlaceholder: '请输入父级文件夹绝对路径 (例如: D:\\Photos)',
+                pathPlaceholder: '在这里粘贴照片文件夹的地址，如 D:\\我的相册',
                 scanBtn: '扫描目录',
                 scanning: '正在扫描...',
                 selectFolders: '选择目标文件夹',
@@ -993,7 +1030,8 @@
                 deselectAll: '取消全选',
                 sortByName: '名称',
                 sortByTime: '修改日期',
-                startBtn: '开始批量压缩',
+                 backupOption: '备份原图 (在同级生成 backup 文件夹)',
+                 startBtn: '开始批量压缩',
                 initializing: '准备处理...',
                 optimizing: '正在优化图片...',
                 processingComplete: '处理完成',
@@ -1022,7 +1060,7 @@
             en: {
                 title: 'Zipper',
                 subtitle: 'Simple local image compression tool',
-                pathPlaceholder: 'Enter parent folder path (e.g. D:\\Photos)',
+                pathPlaceholder: 'Paste folder address here, e.g. D:\\My Photos',
                 scanBtn: 'Scan Folders',
                 scanning: 'Scanning...',
                 selectFolders: 'Select Target Folders',
@@ -1030,6 +1068,7 @@
                 deselectAll: 'Deselect All',
                 sortByName: 'Name',
                 sortByTime: 'Date Modified',
+                backupOption: 'Backup originals (create backup folder)',
                 startBtn: 'Start Compression',
                 initializing: 'Initializing...',
                 optimizing: 'Optimizing Images...',
@@ -1649,11 +1688,17 @@
 
             addLog(langData.initLog.replace('{count}', selectedPaths.length));
 
+            const doBackup = document.getElementById('backupCheckbox').checked;
+
             try {
                 const response = await fetch('/compress', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ selectedPaths })
+                    body: JSON.stringify({ 
+                        selectedPaths,
+                        doBackup,
+                        rootPath: currentRoot.path
+                    })
                 });
 
                 if (!response.ok) {
