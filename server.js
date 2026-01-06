@@ -215,19 +215,16 @@ async function startWorker() {
 // SSE 接口
 app.get('/progress', (req, res) => {
     // 强制禁用超时，这对于 SSE 至关重要
-    req.socket.setTimeout(0);
     req.socket.setKeepAlive(true);
     req.socket.setNoDelay(true);
 
-    // 设置响应头，解决 ERR_ABORTED 问题
-    res.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache, no-transform, no-store',
-        'Connection': 'keep-alive',
-        'Access-Control-Allow-Origin': '*',
-        'X-Accel-Buffering': 'no',
-        'Content-Encoding': 'none'
-    });
+    // 设置响应头
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    
+    res.flushHeaders(); // 立即发送头部
     
     // 立即发送注释行以维持连接
     res.write(': ok\n\n');
@@ -243,17 +240,14 @@ app.get('/progress', (req, res) => {
     };
     res.write(`data: ${JSON.stringify(initData)}\n\n`);
 
-    // 发送心跳防止连接断开
+    // 发送心跳防止连接断开 (每 10 秒一次)
     const heartbeat = setInterval(() => {
-        if (!res.writableEnded && res.writable) {
-            try {
-                res.write(': heartbeat\n\n');
-            } catch (err) {
-                console.warn('心跳发送失败，连接可能已关闭');
-                clearInterval(heartbeat);
-            }
+        if (!res.writableEnded) {
+            res.write(': heartbeat\n\n');
+        } else {
+            clearInterval(heartbeat);
         }
-    }, 15000);
+    }, 10000);
 
     // 监听连接断开
     req.on('close', () => {
@@ -504,6 +498,15 @@ app.post('/compress', async (req, res) => {
     }
 });
 
+process.on('uncaughtException', (err) => {
+    console.error('未捕获的异常:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('未处理的 Promise 拒绝:', reason);
+});
+
 app.listen(port, () => {
+    console.log('Server is starting...');
     console.log(`服务器运行在 http://localhost:${port}`);
 });

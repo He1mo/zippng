@@ -1198,6 +1198,7 @@
         };
 
         let currentLang = localStorage.getItem('lang') || 'zh';
+        let backupCheckbox;
 
         function updateUI() {
             const langData = i18n[currentLang];
@@ -1228,15 +1229,14 @@
 
         function updateSafetyUI() {
             const langData = i18n[currentLang];
-            const checkbox = document.getElementById('backupCheckbox');
             const panel = document.getElementById('safetyPanel');
             const icon = document.getElementById('safetyIcon');
             const title = document.getElementById('safetyTitle');
             const desc = document.getElementById('safetyDesc');
             
-            if (!checkbox || !panel) return;
+            if (!backupCheckbox || !panel) return;
             
-            if (checkbox.checked) {
+            if (backupCheckbox.checked) {
                 panel.classList.add('is-safe');
                 icon.textContent = '🛡️';
                 title.textContent = langData.safetySafeTitle;
@@ -1264,7 +1264,7 @@
         });
 
         // Initialize Backup Safety UI
-        const backupCheckbox = document.getElementById('backupCheckbox');
+        backupCheckbox = document.getElementById('backupCheckbox');
         if (backupCheckbox) {
             backupCheckbox.addEventListener('change', updateSafetyUI);
             // Initial call to set correct state
@@ -1824,33 +1824,6 @@
                 scanBtn.textContent = langData.scanBtn;
             }
         });
-
-        // Backup Toggle Logic
-        const backupCheckbox = document.getElementById('backupCheckbox');
-        const safetyPanel = document.getElementById('safetyPanel');
-        const safetyIcon = document.getElementById('safetyIcon');
-        const safetyTitle = document.getElementById('safetyTitle');
-        const safetyDesc = document.getElementById('safetyDesc');
-
-        function updateSafetyUI() {
-            const isChecked = backupCheckbox.checked;
-            const langData = i18n[currentLang];
-            
-            if (isChecked) {
-                safetyPanel.classList.add('is-safe');
-                safetyIcon.textContent = '🛡️';
-                safetyTitle.textContent = langData.safetySafeTitle;
-                safetyDesc.textContent = langData.safetySafeDesc;
-            } else {
-                safetyPanel.classList.remove('is-safe');
-                safetyIcon.textContent = '⚠️';
-                safetyTitle.textContent = langData.safetyWarningTitle;
-                safetyDesc.textContent = langData.safetyWarningDesc;
-            }
-        }
-
-        backupCheckbox.addEventListener('change', updateSafetyUI);
-        updateSafetyUI(); // Initialize
 
         compressBtn.addEventListener('click', async () => {
             const langData = i18n[currentLang];
