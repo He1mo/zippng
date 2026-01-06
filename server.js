@@ -12,21 +12,37 @@ app.use(express.static('public'));
 // 任务管理状态
 let currentJob = {
     files: [],
+    folderMap: {}, // 存储每个文件夹下的文件总数
+    folderCompletedMap: {}, // 存储每个文件夹已完成的数量
     results: [],
     total: 0,
-    processedCount: 0, // 已领取的任务数
-    completedCount: 0, // 已完成的任务数
+    processedCount: 0,
+    completedCount: 0,
     status: 'idle', 
     clients: [], 
     concurrency: 4,
-    startTime: null
+    startTime: null,
+    selectedPaths: []
 };
 
 // 推送消息到所有 SSE 客户端
 function broadcast(data) {
+    const deadClients = [];
     currentJob.clients.forEach(client => {
-        client.write(`data: ${JSON.stringify(data)}\n\n`);
+        try {
+            if (!client.writableEnded) {
+                client.write(`data: ${JSON.stringify(data)}\n\n`);
+            } else {
+                deadClients.push(client);
+            }
+        } catch (err) {
+            deadClients.push(client);
+        }
     });
+    
+    if (deadClients.length > 0) {
+        currentJob.clients = currentJob.clients.filter(c => !deadClients.includes(c));
+    }
 }
 
 // 图片压缩核心逻辑 (抽取为独立函数)
@@ -87,6 +103,7 @@ async function compressImage(filePath, selectedPaths) {
 
         return {
             file: path.relative(path.dirname(selectedPaths[0]), filePath),
+            fullPath: filePath,
             originalSize: originalSizeStr,
             newSize: newSizeStr,
             status: 'success'
@@ -94,6 +111,7 @@ async function compressImage(filePath, selectedPaths) {
     } catch (err) {
         return { 
             file: path.relative(path.dirname(selectedPaths[0]), filePath), 
+            fullPath: filePath,
             error: err.message, 
             status: 'error' 
         };
@@ -107,20 +125,30 @@ async function startWorker() {
     while (currentJob.processedCount < currentJob.total) {
         if (currentJob.status === 'paused' || currentJob.status === 'cancelled') return;
 
-        const index = currentJob.processedCount;
-        currentJob.processedCount++; 
+        const index = currentJob.processedCount++; 
 
         if (index >= currentJob.total) break;
 
         const filePath = currentJob.files[index];
+        const fileName = path.basename(filePath);
+        const folderPath = path.dirname(filePath);
+        const folderName = path.basename(folderPath);
+        
         broadcast({ 
             type: 'log', 
-            message: `正在处理 (${index + 1}/${currentJob.total}): ${path.basename(filePath)}`
+            message: `正在处理 (${index + 1}/${currentJob.total}): ${folderName}/${fileName}`
         });
 
+        if (currentJob.status !== 'running') break;
         const result = await compressImage(filePath, currentJob.selectedPaths);
         currentJob.results.push(result);
         currentJob.completedCount++;
+
+        // 更新文件夹进度
+        if (!currentJob.folderCompletedMap[folderPath]) {
+            currentJob.folderCompletedMap[folderPath] = 0;
+        }
+        currentJob.folderCompletedMap[folderPath]++;
 
         const percent = Math.round((currentJob.completedCount / currentJob.total) * 100);
         broadcast({ 
@@ -128,15 +156,17 @@ async function startWorker() {
             current: currentJob.completedCount, 
             total: currentJob.total,
             percent: percent,
-            result: result 
+            result: result
         });
 
-        if (currentJob.completedCount === currentJob.total) {
+        if (currentJob.completedCount === currentJob.total && currentJob.total > 0) {
             currentJob.status = 'completed';
             broadcast({ 
                 type: 'status', 
                 status: 'completed', 
                 message: '所有任务已完成',
+                total: currentJob.total,
+                current: currentJob.completedCount,
                 results: currentJob.results 
             });
         }
@@ -145,24 +175,42 @@ async function startWorker() {
 
 // SSE 接口
 app.get('/progress', (req, res) => {
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.flushHeaders();
+    // 设置响应头，解决 ERR_ABORTED 问题
+    res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+        'X-Accel-Buffering': 'no',
+        'Content-Encoding': 'none'
+    });
+    
+    // 立即发送注释行以维持连接
+    res.write(': ok\n\n');
 
     currentJob.clients.push(res);
 
-    req.on('close', () => {
-        currentJob.clients = currentJob.clients.filter(c => c !== res);
-    });
-
     // 发送当前状态
-    res.write(`data: ${JSON.stringify({ 
+    const initData = { 
         type: 'init', 
         status: currentJob.status, 
-        current: currentJob.processedCount, 
-        total: currentJob.total 
-    })}\n\n`);
+        current: currentJob.completedCount, 
+        total: currentJob.total
+    };
+    res.write(`data: ${JSON.stringify(initData)}\n\n`);
+
+    // 发送心跳防止连接断开
+    const heartbeat = setInterval(() => {
+        if (!res.writableEnded) {
+            res.write(': heartbeat\n\n');
+        }
+    }, 15000); // 稍微延长心跳时间
+
+    // 监听连接断开
+    req.on('close', () => {
+        clearInterval(heartbeat);
+        currentJob.clients = currentJob.clients.filter(c => c !== res);
+    });
 });
 
 // 暂停/恢复/取消接口
@@ -178,7 +226,13 @@ app.post('/job/pause', (req, res) => {
 app.post('/job/resume', (req, res) => {
     if (currentJob.status === 'paused') {
         currentJob.status = 'running';
-        broadcast({ type: 'status', status: 'running', message: '任务已恢复' });
+        broadcast({ 
+            type: 'status', 
+            status: 'running', 
+            message: '任务已恢复',
+            total: currentJob.total,
+            current: currentJob.completedCount
+        });
         // 重启 worker
         for (let i = 0; i < currentJob.concurrency; i++) {
             startWorker();
@@ -194,6 +248,7 @@ app.post('/job/cancel', (req, res) => {
     currentJob.files = [];
     currentJob.results = [];
     currentJob.processedCount = 0;
+    currentJob.completedCount = 0;
     currentJob.total = 0;
     res.json({ success: true });
 });
@@ -208,10 +263,15 @@ async function getSubfolders(dir, depth = 0, maxDepth = 3) {
         for (const item of items) {
             if (item.isDirectory() && !item.name.startsWith('.') && item.name !== 'node_modules') {
                 const fullPath = path.join(dir, item.name);
+                // 排除根目录自身（虽然 readdir 不会返回 .，但为了稳妥）
+                if (path.resolve(fullPath) === path.resolve(dir)) continue;
+
+                const stats = await fs.stat(fullPath);
                 subfolders.push({
                     name: item.name,
                     path: fullPath,
-                    depth: depth
+                    depth: depth,
+                    mtime: stats.mtimeMs
                 });
                 // 递归获取更深层
                 const nested = await getSubfolders(fullPath, depth + 1, maxDepth);
@@ -225,19 +285,32 @@ async function getSubfolders(dir, depth = 0, maxDepth = 3) {
 }
 
 // 递归获取文件夹下所有图片文件
-async function getAllImageFiles(dir) {
+async function getAllImageFiles(targetPath) {
     let results = [];
-    const list = await fs.readdir(dir, { withFileTypes: true });
-    for (const file of list) {
-        const fullPath = path.join(dir, file.name);
-        if (file.isDirectory()) {
-            results = results.concat(await getAllImageFiles(fullPath));
-        } else {
-            const ext = path.extname(file.name).toLowerCase();
+    try {
+        const stats = await fs.stat(targetPath);
+        if (stats.isFile()) {
+            const ext = path.extname(targetPath).toLowerCase();
             if (ext === '.jpg' || ext === '.jpeg' || ext === '.png') {
-                results.push(fullPath);
+                return [targetPath];
+            }
+            return [];
+        }
+
+        const list = await fs.readdir(targetPath, { withFileTypes: true });
+        for (const file of list) {
+            const fullPath = path.join(targetPath, file.name);
+            if (file.isDirectory()) {
+                results = results.concat(await getAllImageFiles(fullPath));
+            } else {
+                const ext = path.extname(file.name).toLowerCase();
+                if (ext === '.jpg' || ext === '.jpeg' || ext === '.png') {
+                    results.push(fullPath);
+                }
             }
         }
+    } catch (err) {
+        console.error(`读取 ${targetPath} 失败:`, err);
     }
     return results;
 }
@@ -245,20 +318,71 @@ async function getAllImageFiles(dir) {
 // 扫描目录接口
 app.post('/scan', async (req, res) => {
     const { folderPath } = req.body;
-    if (!folderPath || !fs.existsSync(folderPath)) {
-        return res.status(400).json({ error: '无效的文件夹路径' });
-    }
+    if (!folderPath) return res.status(400).json({ error: '路径不能为空' });
 
     try {
-        const folders = await getSubfolders(folderPath);
-        // 加上根目录本身
-        const allFolders = [
-            { name: '(当前根目录)', path: folderPath, depth: -1 },
-            ...folders
-        ];
-        res.json({ folders: allFolders });
+        if (!fs.existsSync(folderPath)) {
+            return res.status(400).json({ error: '路径不存在' });
+        }
+
+        const absolutePath = path.resolve(folderPath);
+        const stats = await fs.stat(absolutePath);
+
+        // 如果输入的是一个文件
+        if (stats.isFile()) {
+            const ext = path.extname(absolutePath).toLowerCase();
+            const isImage = ['.jpg', '.jpeg', '.png'].includes(ext);
+            const imageFile = isImage ? [{
+                name: path.basename(absolutePath),
+                path: absolutePath,
+                size: stats.size
+            }] : [];
+
+            return res.json({
+                root: {
+                    name: path.dirname(absolutePath),
+                    path: path.dirname(absolutePath),
+                    hasImages: isImage
+                },
+                folders: [],
+                files: imageFile
+            });
+        }
+
+        // 如果是文件夹
+        const subfolders = await getSubfolders(absolutePath);
+        
+        // 获取当前目录下的图片文件
+        const files = await fs.readdir(absolutePath, { withFileTypes: true });
+        const imageFiles = [];
+        
+        for (const f of files) {
+            if (!f.isDirectory()) {
+                const ext = path.extname(f.name).toLowerCase();
+                if (['.jpg', '.jpeg', '.png'].includes(ext)) {
+                    const filePath = path.join(absolutePath, f.name);
+                    const fileStats = await fs.stat(filePath);
+                    imageFiles.push({
+                        name: f.name,
+                        path: filePath,
+                        size: fileStats.size
+                    });
+                }
+            }
+        }
+
+        res.json({ 
+            root: {
+                name: path.basename(absolutePath) || absolutePath,
+                path: absolutePath,
+                hasImages: imageFiles.length > 0
+            },
+            folders: subfolders,
+            files: imageFiles 
+        });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        console.error('扫描失败:', error);
+        res.status(500).json({ error: '服务器内部错误' });
     }
 });
 
@@ -274,43 +398,53 @@ app.post('/compress', async (req, res) => {
     }
 
     try {
-        let allImageFiles = [];
+        const fileSet = new Set();
+        const folderMap = {};
+        const folderCompletedMap = {};
+
         for (const folderPath of selectedPaths) {
             if (fs.existsSync(folderPath)) {
-                const files = await fs.readdir(folderPath, { withFileTypes: true });
-                for (const file of files) {
-                    if (!file.isDirectory()) {
-                        const ext = path.extname(file.name).toLowerCase();
-                        if (ext === '.jpg' || ext === '.jpeg' || ext === '.png') {
-                            allImageFiles.push(path.join(folderPath, file.name));
-                        }
-                    }
-                }
+                const files = await getAllImageFiles(folderPath);
+                // 记录该文件夹下的图片数量（注意：这里依然包含可能被其他文件夹包含的图片，但在总进度中我们会去重）
+                folderMap[folderPath] = files.length;
+                folderCompletedMap[folderPath] = 0;
+                
+                files.forEach(f => fileSet.add(f));
             }
         }
 
-        if (allImageFiles.length === 0) {
+        const allUniqueFiles = Array.from(fileSet);
+
+        if (allUniqueFiles.length === 0) {
             return res.json({ message: '所选文件夹下没有发现图片', count: 0 });
         }
 
         // 初始化任务
-        currentJob.files = allImageFiles;
+        currentJob.files = allUniqueFiles;
+        currentJob.folderMap = folderMap;
+        currentJob.folderCompletedMap = folderCompletedMap;
         currentJob.selectedPaths = selectedPaths;
-        currentJob.total = allImageFiles.length;
+        currentJob.total = allUniqueFiles.length;
         currentJob.processedCount = 0;
+        currentJob.completedCount = 0;
         currentJob.results = [];
         currentJob.status = 'running';
         currentJob.startTime = new Date();
 
         // 异步启动处理
-        broadcast({ type: 'status', status: 'running', message: '任务开始', total: currentJob.total });
+        broadcast({ 
+            type: 'status', 
+            status: 'running', 
+            message: '任务开始', 
+            total: currentJob.total,
+            current: 0
+        });
         
-        // 启动多个 worker 并发处理
-        for (let i = 0; i < currentJob.concurrency; i++) {
-            startWorker();
-        }
+        // 启动多个 worker 并行处理
+        const workers = Array(currentJob.concurrency).fill(null).map(() => startWorker());
+        Promise.all(workers).catch(err => console.error('Worker error:', err));
 
-        res.json({ message: '任务已启动', count: allImageFiles.length });
+        res.json({ message: '任务已启动', count: allUniqueFiles.length });
     } catch (error) {
         console.error('启动任务失败:', error);
         res.status(500).json({ error: '服务器内部错误' });

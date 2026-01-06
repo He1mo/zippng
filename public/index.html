@@ -3,239 +3,680 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>图片批量压缩工具</title>
+    <title>Zipper</title>
     <style>
+        :root {
+            --gemini-bg: #131314;
+            --gemini-card: #1e1f20;
+            --gemini-blue: #4285f4;
+            --gemini-purple: #9b72cb;
+            --gemini-red: #d93025;
+            --gemini-green: #34a853;
+            --text-primary: #e3e3e3;
+            --text-secondary: #c4c7c5;
+            --border-color: #444746;
+            --input-bg: #131314;
+            --accent-gradient: linear-gradient(74deg, #4285f4 0, #9b72cb 9%, #d96570 20%, #131314 100%);
+            --gemini-gradient: linear-gradient(90deg, #4285f4, #9b72cb, #d96570);
+        }
+
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            max-width: 800px;
-            margin: 40px auto;
+            font-family: 'Google Sans', 'Inter', sans-serif;
+            background-color: var(--gemini-bg);
+            color: var(--text-primary);
+            line-height: 1.6;
+            margin: 0;
             padding: 20px;
-            background-color: #f5f7f9;
-            color: #333;
-        }
-        .container {
-            background: white;
-            padding: 30px;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-        h1 {
-            color: #2c3e50;
-            text-align: center;
-            margin-bottom: 30px;
-        }
-        .input-group {
-            margin-bottom: 20px;
             display: flex;
-            gap: 10px;
+            justify-content: center;
+            min-height: 100vh;
         }
-        input[type="text"] {
-            flex: 1;
-            padding: 12px;
-            border: 2px solid #ddd;
-            border-radius: 6px;
-            font-size: 16px;
+
+        .container {
+            width: 100%;
+            max-width: 1000px;
+            margin: 20px auto;
+            background: var(--gemini-card);
+            padding: 48px;
+            border-radius: 28px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            position: relative;
         }
-        .scan-btn {
-            width: auto;
-            padding: 0 20px;
-            background-color: #2ecc71;
+
+        .lang-switch {
+            position: absolute;
+            top: 48px;
+            right: 48px;
+            display: flex;
+            gap: 8px;
+            background: var(--gemini-bg);
+            padding: 4px;
+            border-radius: 20px;
+            border: 1px solid var(--border-color);
         }
-        .scan-btn:hover {
-            background-color: #27ae60;
+
+        .lang-btn {
+            padding: 4px 12px;
+            border-radius: 16px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: transparent;
+            color: var(--text-secondary);
+            border: none;
         }
-        #folderTree {
-            margin-top: 20px;
-            max-height: 300px;
-            overflow-y: auto;
-            border: 1px solid #eee;
-            padding: 15px;
-            border-radius: 6px;
-            display: none;
+
+        .lang-btn.active {
+            background: var(--gemini-blue);
+            color: white;
         }
-        .folder-item {
-            margin: 8px 0;
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 500;
+            margin-bottom: 2rem;
+            background: var(--gemini-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
         }
-        .folder-depth-0 { margin-left: 0; }
-        .folder-depth-1 { margin-left: 20px; }
-        .folder-depth-2 { margin-left: 40px; }
-        .folder-depth-3 { margin-left: 60px; }
-        
+
+        h1::before {
+            content: '';
+            width: 32px;
+            height: 32px;
+            background: var(--gemini-gradient);
+            mask: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z'/%3E%3C/svg%3E") no-repeat center;
+            -webkit-mask: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z'/%3E%3C/svg%3E") no-repeat center;
+        }
+
+        .input-group {
+            position: relative;
+            margin-bottom: 32px;
+            display: flex;
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 32px;
+            padding: 8px 8px 8px 24px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .input-group:focus-within {
+            border-color: transparent;
+            box-shadow: 0 0 0 2px var(--gemini-purple);
+        }
+
+        input[type="text"] {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: var(--text-primary);
+            font-size: 16px;
+            outline: none;
+            padding: 12px 0;
+        }
+
+        button {
+            padding: 12px 28px;
+            border-radius: 24px;
+            font-weight: 500;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+            color: white;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .scan-btn {
+            background: var(--gemini-blue);
+        }
+
+        .scan-btn:hover {
+            opacity: 0.9;
+            transform: scale(1.02);
+        }
+
+        #folderTree {
+            margin-top: 24px;
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            overflow: hidden;
+            display: none;
+            background-color: var(--gemini-bg);
+        }
+
+        .tree-header {
+            padding: 12px 24px;
+            background-color: rgba(255,255,255,0.05);
+            border-bottom: 1px solid var(--border-color);
+            display: grid;
+            grid-template-columns: 40px 1fr 200px;
+            align-items: center;
+            gap: 16px;
+            border-radius: 12px 12px 0 0;
+        }
+
+        .root-info-bar {
+            padding: 8px 24px;
+            background-color: rgba(66, 133, 244, 0.1);
+            border-bottom: 1px solid rgba(66, 133, 244, 0.2);
+            font-size: 13px;
+            color: var(--gemini-blue);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .root-info-bar .root-label {
+            font-weight: 600;
+            opacity: 0.8;
+        }
+
+        .root-info-bar .root-path {
+            opacity: 0.6;
+            font-family: 'Google Sans Mono', monospace;
+            font-size: 11px;
+        }
+
+        #selectAllCheckbox {
+            width: 18px;
+            height: 18px;
+            accent-color: var(--gemini-purple);
+            cursor: pointer;
+            justify-self: center;
+        }
+
+        .tree-header span {
+            font-weight: 500;
+            color: var(--text-secondary);
+            font-size: 13px;
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .tree-header span:hover {
+            color: var(--text-primary);
+        }
+
+        .sort-icon::after {
+            content: '↕';
+            font-size: 10px;
+            opacity: 0.5;
+        }
+
+        .sort-asc::after { content: '↑'; opacity: 1; color: var(--gemini-blue); }
+        .sort-desc::after { content: '↓'; opacity: 1; color: var(--gemini-blue); }
+
+        #folderList {
+            max-height: 350px;
+            overflow-y: auto;
+            padding: 0;
+        }
+
+        .folder-item {
+            padding: 10px 24px;
+            display: grid;
+            grid-template-columns: 40px 1fr 200px;
+            align-items: center;
+            gap: 16px;
+            transition: all 0.2s;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+        }
+
+        .folder-item:hover {
+            background-color: rgba(255,255,255,0.05);
+        }
+
+        .folder-item.file-item {
+            background-color: rgba(66, 133, 244, 0.03);
+        }
+
+        .folder-item.file-item:hover {
+            background-color: rgba(66, 133, 244, 0.08);
+        }
+
+        .folder-icon {
+            font-size: 18px;
+            min-width: 24px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .folder-mtime {
+            font-size: 12px;
+            color: #80868b;
+            font-family: 'Google Sans Mono', monospace;
+            text-align: right;
+            padding-right: 8px;
+        }
+
+        .folder-item input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: var(--gemini-purple);
+            border-radius: 4px;
+            justify-self: center;
+        }
+
+        .folder-item label {
+            cursor: pointer;
+            font-size: 14px;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            overflow: hidden;
+            white-space: nowrap;
+        }
+
+        .folder-name-text {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            flex-shrink: 0;
+            max-width: 300px;
+        }
+
+        .folder-path-text {
+            opacity: 0.3;
+            font-size: 11px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .folder-depth-0 .folder-label-container { padding-left: 0; }
+        .folder-depth-1 .folder-label-container { padding-left: 20px; }
+        .folder-depth-2 .folder-label-container { padding-left: 40px; }
+        .folder-depth-3 .folder-label-container { padding-left: 60px; }
+
+        .folder-label-container {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 0;
+        }
+
+        .root-folder-item {
+            background-color: rgba(66, 133, 244, 0.05);
+            border-left: 3px solid var(--gemini-blue);
+            padding-left: 21px; /* 24 - 3 */
+        }
+
+        .root-folder-item:hover {
+            background-color: rgba(66, 133, 244, 0.08);
+        }
+
         #compressBtn {
-            margin-top: 20px;
+            width: 100%;
+            margin-top: 32px;
+            background: var(--gemini-gradient);
+            padding: 18px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 32px;
+            display: none;
+            box-shadow: 0 4px 15px rgba(66, 133, 244, 0.2);
+        }
+
+        #compressBtn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(66, 133, 244, 0.3);
+        }
+
+        /* 进度卡片样式重构 */
+        .progress-card {
+            display: none;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 24px;
+            margin-top: 48px; /* 增加上方间距 */
+            margin-bottom: 32px;
+            border: 1px solid var(--border-color);
+            backdrop-filter: blur(10px);
+        }
+
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .progress-title {
+            font-size: 18px;
+            font-weight: 600;
+            background: var(--gemini-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .progress-stats {
+            font-family: 'Google Sans Mono', monospace;
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .progress-bar-wrapper {
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 24px;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            width: 0%;
+            background: var(--gemini-gradient);
+            transition: width 0.3s ease;
+            box-shadow: 0 0 10px rgba(66, 133, 244, 0.5);
+        }
+
+        .controls {
+            display: flex;
+            gap: 16px;
+        }
+
+
+        .btn-pause { background-color: #3c4043; color: var(--text-primary); flex: 1; }
+        .btn-resume { background: var(--gemini-blue); flex: 1; display: none; }
+        .btn-cancel { background-color: transparent; border: 1px solid var(--border-color); color: var(--text-secondary); flex: 1; }
+        .btn-cancel:hover { background-color: rgba(255,255,255,0.05); }
+
+        /* 日志窗口 - 极简 Gemini 风格 */
+        .log-card {
+            margin-top: 32px;
             display: none;
         }
-        #result {
-            margin-top: 30px;
-            padding: 20px;
+
+        .log-card-header {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+            padding-left: 8px;
+        }
+
+        .log-container {
+            background-color: rgba(255,255,255,0.02);
+            color: var(--text-secondary);
+            padding: 12px;
+            font-family: 'Google Sans Mono', 'Inter', monospace;
+            font-size: 13px;
+            height: 320px;
+            overflow-y: auto;
+            line-height: 1.6;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .log-item {
+            margin-bottom: 4px;
+            display: flex;
+            gap: 12px;
+            padding: 6px 10px;
             border-radius: 6px;
+            transition: background 0.2s;
+            align-items: flex-start;
+        }
+
+        .log-item:hover {
+            background: rgba(255,255,255,0.05);
+        }
+
+        .log-time { 
+            color: #80868b; 
+            font-size: 11px; 
+            min-width: 65px; 
+            padding-top: 1px;
+            font-family: 'Google Sans Mono', monospace;
+        }
+        
+        .log-content {
+            word-break: break-all;
+            flex: 1;
+        }
+        .log-msg-success { color: var(--gemini-green); }
+        .log-msg-error { color: var(--gemini-red); }
+        .log-msg-info { color: var(--text-primary); }
+
+        #result {
+            margin-top: 40px;
+            padding: 32px;
+            border-radius: 24px;
+            background: rgba(52, 168, 83, 0.05);
+            border: 1px solid rgba(52, 168, 83, 0.2);
             display: none;
         }
-        .success {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-        .error {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
+
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 20px;
+            margin-top: 24px;
         }
-        th, td {
-            text-align: left;
-            padding: 12px;
-            border-bottom: 1px solid #eee;
-        }
+
         th {
-            background-color: #f8f9fa;
-        }
-        .status-success { color: #27ae60; font-weight: bold; }
-        .status-error { color: #e74c3c; font-weight: bold; }
-        .loading {
-            text-align: center;
-            display: none;
-            margin: 20px 0;
-        }
-        /* 进度条样式 */
-        .progress-container {
-            margin: 20px 0;
-            display: none;
-        }
-        .progress-bar-bg {
-            background-color: #eee;
-            border-radius: 10px;
-            height: 20px;
-            width: 100%;
-            overflow: hidden;
-            margin-bottom: 10px;
-        }
-        .progress-bar-fill {
-            background-color: #3498db;
-            height: 100%;
-            width: 0%;
-            transition: width 0.3s ease;
-        }
-        .progress-info {
-            display: flex;
-            justify-content: space-between;
-            font-size: 14px;
-            color: #666;
-        }
-        /* 日志窗口样式 */
-        .log-container {
-            margin-top: 20px;
-            background-color: #1e1e1e;
-            color: #d4d4d4;
-            padding: 15px;
-            border-radius: 6px;
-            font-family: 'Consolas', 'Courier New', monospace;
+            text-align: left;
+            padding: 12px 16px;
             font-size: 12px;
-            height: 200px;
-            overflow-y: auto;
-            display: none;
+            font-weight: 500;
+            color: #80868b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
-        .log-item {
-            margin-bottom: 4px;
-            border-left: 3px solid #555;
-            padding-left: 8px;
+
+        td {
+            padding: 16px;
+            border-top: 1px solid var(--border-color);
+            font-size: 14px;
         }
-        .log-item.success { color: #4ec9b0; border-left-color: #4ec9b0; background: transparent; border: none; padding: 0; margin: 0; }
-        .log-item.error { color: #f44747; border-left-color: #f44747; background: transparent; border: none; padding: 0; margin: 0; }
-        .log-item.info { color: #9cdcfe; border-left-color: #9cdcfe; }
-        
-        /* 控制按钮 */
-        .controls {
-            display: flex;
-            gap: 10px;
-            margin-top: 15px;
-            display: none;
+
+        .badge {
+            padding: 4px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 500;
         }
-        .btn-pause { background-color: #f39c12; }
-        .btn-resume { background-color: #27ae60; display: none; }
-        .btn-cancel { background-color: #e74c3c; }
-        
+
+        .badge-success { background: rgba(52, 168, 83, 0.1); color: var(--gemini-green); }
+        .badge-error { background: rgba(217, 48, 37, 0.1); color: var(--gemini-red); }
+
         .spinner {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #3498db;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255,255,255,0.1);
+            border-top-color: var(--gemini-blue);
             border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            animation: spin 2s linear infinite;
-            display: inline-block;
-            vertical-align: middle;
-            margin-right: 10px;
+            animation: spin 1s linear infinite;
         }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #3c4043; border-radius: 10px; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>图片批量压缩工具</h1>
+        <div class="lang-switch">
+            <button class="lang-btn active" data-lang="zh">中</button>
+            <button class="lang-btn" data-lang="en">EN</button>
+        </div>
+
+        <h1 data-i18n="title">Zipper</h1>
+        
         <div class="input-group">
-            <input type="text" id="folderPath" placeholder="请输入父级文件夹绝对路径" required>
-            <button id="scanBtn" class="scan-btn">扫描目录</button>
+            <input type="text" id="folderPath" data-i18n-placeholder="pathPlaceholder" placeholder="Enter parent folder path (e.g. D:\Photos)" required>
+            <button id="scanBtn" class="scan-btn" data-i18n="scanBtn">Scan Folders</button>
         </div>
 
         <div id="folderTree">
-            <p style="margin-top: 0; font-weight: bold; border-bottom: 1px solid #eee; padding-bottom: 10px;">请选择要压缩图片的文件夹：</p>
-            <div id="folderList"></div>
-            <div style="margin-top: 15px; border-top: 1px solid #eee; padding-top: 10px;">
-                <button id="selectAllBtn" style="width: auto; padding: 5px 15px; font-size: 14px; background-color: #95a5a6;">全选 / 取消全选</button>
+            <div class="tree-header">
+                <input type="checkbox" id="selectAllCheckbox">
+                <span id="sortName" class="sort-icon" data-i18n="sortByName">Name</span>
+                <span id="sortTime" class="sort-icon" data-i18n="sortByTime">Date Modified</span>
             </div>
+            <div id="folderList"></div>
         </div>
 
-        <button id="compressBtn">开始压缩选中文件夹下的图片</button>
+        <button id="compressBtn" data-i18n="startBtn">Start Compression</button>
 
-        <div id="progressContainer" class="progress-container">
-            <div class="progress-bar-bg">
+        <div id="progressCard" class="progress-card">
+            <div class="progress-header">
+                <div class="progress-title" id="progressTitle" data-i18n="initializing">Initializing...</div>
+                <div class="progress-stats" id="progressStats">0 / 0</div>
+            </div>
+            <div class="progress-bar-wrapper">
                 <div id="progressBarFill" class="progress-bar-fill"></div>
             </div>
-            <div class="progress-info">
-                <span id="progressText">正在准备...</span>
-                <span id="progressPercent">0%</span>
-            </div>
-            <div id="controls" class="controls">
-                <button id="pauseBtn" class="btn-pause">暂停</button>
-                <button id="resumeBtn" class="btn-resume">继续</button>
-                <button id="cancelBtn" class="btn-cancel">取消任务</button>
+            
+            <div class="controls" id="controls">
+                <button id="pauseBtn" class="btn-pause" data-i18n="pause">Pause</button>
+                <button id="resumeBtn" class="btn-resume" data-i18n="resume">Resume</button>
+                <button id="cancelBtn" class="btn-cancel" data-i18n="cancel">Cancel</button>
             </div>
         </div>
 
-        <div id="logContainer" class="log-container"></div>
-
-        <div id="loading" class="loading">
-            <div class="spinner"></div>
-            <span>正在压缩图片，请稍候...</span>
+        <div id="logCard" class="log-card">
+            <div class="log-card-header" data-i18n="logHeader">Activity Log</div>
+            <div id="logContainer" class="log-container"></div>
         </div>
 
         <div id="result"></div>
     </div>
 
     <script>
+        const i18n = {
+            zh: {
+                title: 'Zipper',
+                pathPlaceholder: '请输入父级文件夹绝对路径 (例如: D:\\Photos)',
+                scanBtn: '扫描目录',
+                scanning: '正在扫描...',
+                selectFolders: '选择目标文件夹',
+                selectAll: '全选 / 取消',
+                deselectAll: '取消全选',
+                sortByName: '名称',
+                sortByTime: '修改日期',
+                startBtn: '开始批量压缩',
+                initializing: '准备处理...',
+                optimizing: '正在优化图片...',
+                processingComplete: '处理完成',
+                pause: '暂停任务',
+                resume: '继续任务',
+                taskPaused: '任务已暂停',
+                cancel: '取消任务',
+                close: '关闭进度',
+                logHeader: '处理日志',
+                successTitle: '压缩任务已完成',
+                processedCount: '成功处理了 {count} 个文件',
+                tableFile: '文件名',
+                tableOriginal: '原大小',
+                tableOptimized: '压缩后',
+                tableStatus: '状态',
+                tableSuccess: '成功',
+                tableError: '失败',
+                checkLog: '更多结果请查看上方日志',
+                initLog: '正在初始化 {count} 个文件夹的优化任务...',
+                cancelConfirm: '确定要取消当前任务吗？',
+                networkError: '网络错误',
+                optimized: '已优化',
+                failed: '失败',
+                cancelled: '任务已手动取消'
+            },
+            en: {
+                title: 'Zipper',
+                pathPlaceholder: 'Enter parent folder path (e.g. D:\\Photos)',
+                scanBtn: 'Scan Folders',
+                scanning: 'Scanning...',
+                selectFolders: 'Select Target Folders',
+                selectAll: 'Select All',
+                deselectAll: 'Deselect All',
+                sortByName: 'Name',
+                sortByTime: 'Date Modified',
+                startBtn: 'Start Compression',
+                initializing: 'Initializing...',
+                optimizing: 'Optimizing Images...',
+                processingComplete: 'Processing Complete',
+                pause: 'Pause',
+                resume: 'Resume',
+                taskPaused: 'Task Paused',
+                cancel: 'Cancel',
+                close: 'Close',
+                logHeader: 'Activity Log',
+                successTitle: 'Optimization Successful',
+                processedCount: 'Processed {count} files successfully',
+                tableFile: 'File',
+                tableOriginal: 'Original',
+                tableOptimized: 'Optimized',
+                tableStatus: 'Result',
+                tableSuccess: 'Success',
+                tableError: 'Error',
+                checkLog: 'Check activity log for full details',
+                initLog: 'Initializing optimization for {count} folders...',
+                cancelConfirm: 'Cancel current task?',
+                networkError: 'Network error',
+                optimized: 'Optimized',
+                failed: 'Failed',
+                cancelled: 'Task cancelled by user'
+            }
+        };
+
+        let currentLang = localStorage.getItem('lang') || 'zh';
+
+        function updateUI() {
+            const langData = i18n[currentLang];
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                if (langData[key]) el.textContent = langData[key];
+            });
+            document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+                const key = el.getAttribute('data-i18n-placeholder');
+                if (langData[key]) el.placeholder = langData[key];
+            });
+            
+            // Update active state of lang buttons
+            document.querySelectorAll('.lang-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.getAttribute('data-lang') === currentLang);
+            });
+        }
+
+        // Initialize Language
+        updateUI();
+
+        document.querySelectorAll('.lang-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                currentLang = btn.getAttribute('data-lang');
+                localStorage.setItem('lang', currentLang);
+                updateUI();
+            });
+        });
+
         const scanBtn = document.getElementById('scanBtn');
         const compressBtn = document.getElementById('compressBtn');
         const folderPathInput = document.getElementById('folderPath');
         const folderTree = document.getElementById('folderTree');
         const folderList = document.getElementById('folderList');
-        const selectAllBtn = document.getElementById('selectAllBtn');
-        const loading = document.getElementById('loading');
+        const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+        const sortNameBtn = document.getElementById('sortName');
+        const sortTimeBtn = document.getElementById('sortTime');
         const resultDiv = document.getElementById('result');
         
-        const progressContainer = document.getElementById('progressContainer');
+        const progressCard = document.getElementById('progressCard');
         const progressBarFill = document.getElementById('progressBarFill');
-        const progressText = document.getElementById('progressText');
-        const progressPercent = document.getElementById('progressPercent');
+        const progressTitle = document.getElementById('progressTitle');
+        const progressStats = document.getElementById('progressStats');
+        const logCard = document.getElementById('logCard');
         const logContainer = document.getElementById('logContainer');
         const controls = document.getElementById('controls');
         const pauseBtn = document.getElementById('pauseBtn');
@@ -244,169 +685,369 @@
 
         let isAllSelected = false;
         let eventSource = null;
+        let currentFolders = [];
+        let currentFiles = [];
+        let currentRoot = null;
+        let sortConfig = { key: null, direction: 'asc' };
 
-        // 日志打印
         function addLog(message, type = 'info') {
             const div = document.createElement('div');
-            div.className = `log-item ${type}`;
-            div.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
-            logContainer.appendChild(div);
-            logContainer.scrollTop = logContainer.scrollHeight;
+            div.className = 'log-item';
+            const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            div.innerHTML = `<span class="log-time">${time}</span><span class="log-content log-msg-${type}">${message}</span>`;
+            logContainer.prepend(div);
+            // 确保日志框可见
+            logCard.style.display = 'block';
         }
 
-        // 初始化 SSE 连接
-        function initSSE() {
-            if (eventSource) eventSource.close();
-            
-            eventSource = new EventSource('/progress');
-            
-            eventSource.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                
-                switch(data.type) {
-                    case 'log':
-                        addLog(data.message);
-                        if (data.progress) {
-                            progressBarFill.style.width = `${data.progress}%`;
-                            progressPercent.textContent = `${data.progress}%`;
-                        }
-                        break;
-                    
-                    case 'progress':
-                        progressText.textContent = `处理进度: ${data.current} / ${data.total}`;
-                        const percent = Math.round((data.current / data.total) * 100);
-                        progressBarFill.style.width = `${percent}%`;
-                        progressPercent.textContent = `${percent}%`;
-                        
-                        if (data.result) {
-                            const res = data.result;
-                            addLog(`${res.status === 'success' ? '✅' : '❌'} ${res.file}: ${res.originalSize} -> ${res.newSize || '失败'}`, res.status);
-                        }
-                        break;
-                    
-                    case 'status':
-                        addLog(`状态更新: ${data.message}`, 'info');
-                        if (data.status === 'paused') {
-                            pauseBtn.style.display = 'none';
-                            resumeBtn.style.display = 'inline-block';
-                        } else if (data.status === 'running') {
-                            pauseBtn.style.display = 'inline-block';
-                            resumeBtn.style.display = 'none';
-                        } else if (data.status === 'completed') {
-                            finishJob(data.results);
-                        } else if (data.status === 'cancelled') {
-                            resetUI();
-                            addLog('任务已取消', 'error');
-                        }
-                        break;
-                    
-                    case 'init':
-                        if (data.status === 'running' || data.status === 'paused') {
-                            showJobUI();
-                            progressText.textContent = `处理进度: ${data.current} / ${data.total}`;
-                            const p = Math.round((data.current / data.total) * 100);
-                            progressBarFill.style.width = `${p}%`;
-                            progressPercent.textContent = `${p}%`;
-                            if (data.status === 'paused') {
-                                pauseBtn.style.display = 'none';
-                                resumeBtn.style.display = 'inline-block';
-                            }
-                        }
-                        break;
-                }
-            };
+        function formatTime(ms) {
+            if (!ms) return '-';
+            const date = new Date(ms);
+            return date.toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+        }
 
-            eventSource.onerror = () => {
-                addLog('与服务器连接断开，正在重连...', 'error');
-            };
+        function renderFolderList() {
+            if (!folderList) return;
+            folderList.innerHTML = '';
+            
+            // 1. 更新顶部的根目录信息条 (Root Info Bar)
+            const existingRootBar = folderTree.querySelector('.root-info-bar');
+            if (existingRootBar) existingRootBar.remove();
+
+            if (currentRoot) {
+                const rootBar = document.createElement('div');
+                rootBar.className = 'root-info-bar';
+                rootBar.innerHTML = `
+                    <span class="root-icon">🏠</span>
+                    <span class="root-label">Root:</span>
+                    <span class="root-path">${currentRoot.path}</span>
+                    ${currentRoot.hasImages ? '<span style="margin-left:auto; font-size:10px; padding:2px 8px; background:rgba(66,133,244,0.2); border-radius:10px;">Contains Images</span>' : ''}
+                `;
+                folderTree.insertBefore(rootBar, folderTree.querySelector('.tree-header'));
+            }
+
+            // 2. 过滤掉列表中的根目录项
+            let displayFolders = currentFolders.filter(f => {
+                if (currentRoot && f.path === currentRoot.path) return false;
+                if (f.depth === -1) return false;
+                return true;
+            });
+
+            // 3. 排序逻辑
+            if (sortConfig.key) {
+                displayFolders.sort((a, b) => {
+                    let valA = a[sortConfig.key];
+                    let valB = b[sortConfig.key];
+                    if (typeof valA === 'string') {
+                        return sortConfig.direction === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+                    }
+                    return sortConfig.direction === 'asc' ? valA - valB : valB - valA;
+                });
+            }
+
+            // 4. 渲染子目录列表
+            displayFolders.forEach(folder => {
+                const div = document.createElement('div');
+                const depth = folder.depth; 
+                div.className = `folder-item folder-depth-${depth}`;
+                const safeId = getSafeId(folder.path);
+                div.innerHTML = `
+                    <input type="checkbox" id="folder-${safeId}" value="${folder.path}" ${isAllSelected ? 'checked' : ''}>
+                    <div class="folder-label-container">
+                        <span class="folder-icon">📁</span>
+                        <label for="folder-${safeId}">
+                            <span class="folder-name-text">${folder.name}</span>
+                            <span class="folder-path-text">${folder.path}</span>
+                        </label>
+                    </div>
+                    <span class="folder-mtime">${formatTime(folder.mtime)}</span>
+                `;
+                folderList.appendChild(div);
+            });
+
+            // 5. 渲染当前目录下的图片 (如果存在)
+            if (currentFiles && currentFiles.length > 0) {
+                currentFiles.forEach(file => {
+                    const div = document.createElement('div');
+                    div.className = 'folder-item file-item';
+                    const safeId = getSafeId(file.path);
+                    div.innerHTML = `
+                        <input type="checkbox" id="file-${safeId}" value="${file.path}" ${isAllSelected ? 'checked' : ''}>
+                        <div class="folder-label-container">
+                            <span class="folder-icon">🖼️</span>
+                            <label for="file-${safeId}">
+                                <span class="folder-name-text">${file.name}</span>
+                                <span class="folder-path-text">${file.path}</span>
+                            </label>
+                        </div>
+                        <span class="folder-mtime">-</span>
+                    `;
+                    folderList.appendChild(div);
+                });
+            }
+
+            // 6. 如果没有任何内容，显示空状态
+            if (displayFolders.length === 0 && (!currentFiles || currentFiles.length === 0)) {
+                const empty = document.createElement('div');
+                empty.className = 'folder-item';
+                empty.style.gridTemplateColumns = '1fr';
+                empty.style.textAlign = 'center';
+                empty.style.color = '#80868b';
+                empty.style.padding = '40px';
+                empty.textContent = currentLang === 'zh' ? '没有发现可压缩的图片文件或文件夹' : 'No compressible images or folders found';
+                folderList.appendChild(empty);
+            }
+
+            // 7. 重新绑定复选框事件
+            folderList.querySelectorAll('input').forEach(cb => {
+                cb.addEventListener('change', () => {
+                    const allCbs = folderList.querySelectorAll('input');
+                    const checkedCbs = folderList.querySelectorAll('input:checked');
+                    selectAllCheckbox.checked = (allCbs.length > 0 && checkedCbs.length === allCbs.length);
+                    compressBtn.style.display = checkedCbs.length > 0 ? 'block' : 'none';
+                });
+            });
+
+            // 默认按钮显示逻辑
+            const checkedCbs = folderList.querySelectorAll('input:checked');
+            compressBtn.style.display = checkedCbs.length > 0 ? 'block' : 'none';
+        }
+
+        function updateSortUI() {
+            [sortNameBtn, sortTimeBtn].forEach(btn => {
+                btn.classList.remove('sort-asc', 'sort-desc');
+            });
+            if (sortConfig.key) {
+                const btn = sortConfig.key === 'name' ? sortNameBtn : sortTimeBtn;
+                btn.classList.add(sortConfig.direction === 'asc' ? 'sort-asc' : 'sort-desc');
+            }
+        }
+
+        sortNameBtn.addEventListener('click', () => {
+            if (sortConfig.key === 'name') {
+                sortConfig.direction = sortConfig.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortConfig.key = 'name';
+                sortConfig.direction = 'asc';
+            }
+            updateSortUI();
+            renderFolderList();
+        });
+
+        sortTimeBtn.addEventListener('click', () => {
+            if (sortConfig.key === 'mtime') {
+                sortConfig.direction = sortConfig.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortConfig.key = 'mtime';
+                sortConfig.direction = 'asc';
+            }
+            updateSortUI();
+            renderFolderList();
+        });
+
+        selectAllCheckbox.addEventListener('change', (e) => {
+            isAllSelected = e.target.checked;
+            folderList.querySelectorAll('input').forEach(cb => cb.checked = isAllSelected);
+            compressBtn.style.display = isAllSelected ? 'block' : 'none';
+        });
+
+        function getSafeId(str) {
+            // 使用 encodeURIComponent 处理非 ASCII 字符，然后替换掉不能作为 ID 的字符
+            return 'id-' + encodeURIComponent(str).replace(/%/g, '_').replace(/\./g, '-');
+        }
+
+        function updateProgress(current, total) {
+            const langData = i18n[currentLang];
+            const curr = parseInt(current) || 0;
+            const tot = parseInt(total) || 0;
+            let percent = tot > 0 ? Math.round((curr / tot) * 100) : 0;
+            if (percent > 100) percent = 100;
+            
+            progressBarFill.style.width = `${percent}%`;
+            progressStats.textContent = `${curr} / ${tot} (${percent}%)`;
+            progressTitle.textContent = percent === 100 ? langData.processingComplete : langData.optimizing;
+        }
+
+        function initSSE() {
+            if (eventSource) {
+                eventSource.onmessage = null;
+                eventSource.onerror = null;
+                eventSource.close();
+                eventSource = null;
+            }
+            
+            // 延迟一小段时间初始化，确保页面加载稳定
+            setTimeout(() => {
+                eventSource = new EventSource('/progress');
+                
+                eventSource.onerror = (err) => {
+                    console.warn("SSE connection error, closing to retry...");
+                    if (eventSource) {
+                        eventSource.close();
+                        eventSource = null;
+                    }
+                    // 3秒后尝试重新连接
+                    setTimeout(initSSE, 3000);
+                };
+
+                eventSource.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    const langData = i18n[currentLang];
+                    
+                    switch(data.type) {
+                        case 'init':
+                            if (data.status === 'running' || data.status === 'paused') {
+                                showJobUI();
+                                updateProgress(data.current, data.total);
+                                if (data.status === 'paused') {
+                                    pauseBtn.style.display = 'none';
+                                    resumeBtn.style.display = 'inline-flex';
+                                    progressTitle.textContent = langData.taskPaused;
+                                }
+                            }
+                            break;
+
+                        case 'status':
+                            if (data.status === 'running') {
+                                showJobUI();
+                                updateProgress(0, data.total);
+                                pauseBtn.style.display = 'inline-flex';
+                                resumeBtn.style.display = 'none';
+                                progressTitle.textContent = langData.optimizing;
+                                addLog(langData.startBtn + '...', 'info');
+                            } else if (data.status === 'paused') {
+                                pauseBtn.style.display = 'none';
+                                resumeBtn.style.display = 'inline-flex';
+                                progressTitle.textContent = langData.taskPaused;
+                            } else if (data.status === 'completed') {
+                                updateProgress(data.total, data.total);
+                                finishJob(data.results);
+                            } else if (data.status === 'cancelled') {
+                                resetUI();
+                            }
+                            break;
+
+                        case 'log':
+                            addLog(data.message, 'info');
+                            break;
+
+                        case 'progress':
+                            updateProgress(data.current, data.total);
+                            
+                            if (data.result) {
+                                const res = data.result;
+                                const statusText = res.status === 'success' ? langData.optimized : langData.failed;
+                                addLog(`${statusText}: ${res.file} (${res.originalSize} → ${res.newSize || 'Error'})`, res.status);
+                            }
+                            break;
+                    }
+                };
+            }, 500); // 增加延迟到 500ms
         }
 
         function showJobUI() {
-            progressContainer.style.display = 'block';
-            logContainer.style.display = 'block';
-            controls.style.display = 'flex';
-            compressBtn.disabled = true;
+            folderTree.style.display = 'none';
+            compressBtn.style.display = 'none'; // 隐藏压缩按钮
+            progressCard.style.display = 'block';
+            logCard.style.display = 'block';
             resultDiv.style.display = 'none';
+            // 确保滚动到进度卡片位置
+            progressCard.scrollIntoView({ behavior: 'smooth' });
         }
 
         function resetUI() {
-            progressContainer.style.display = 'none';
-            logContainer.style.display = 'none';
-            controls.style.display = 'none';
+            const langData = i18n[currentLang];
+            progressCard.style.display = 'none';
+            resultDiv.style.display = 'none';
+            folderTree.style.display = 'block';
+            
+            // 检查是否有选中的项，决定是否显示压缩按钮
+            const checkedCbs = folderList.querySelectorAll('input:checked');
+            compressBtn.style.display = checkedCbs.length > 0 ? 'block' : 'none';
             compressBtn.disabled = false;
+            compressBtn.style.opacity = '1';
+            
             progressBarFill.style.width = '0%';
-            progressPercent.textContent = '0%';
             logContainer.innerHTML = '';
+            cancelBtn.textContent = langData.cancel;
         }
 
         function finishJob(results) {
+            const langData = i18n[currentLang];
             pauseBtn.style.display = 'none';
             resumeBtn.style.display = 'none';
-            cancelBtn.textContent = '关闭进度窗口';
+            cancelBtn.textContent = langData.close;
             
-            resultDiv.className = 'success';
             resultDiv.style.display = 'block';
             
-            let html = `<strong>压缩任务完成</strong> (处理了 ${results.length} 个文件)`;
+            let html = `<div style="font-weight:500; font-size:1.25rem; color:var(--gemini-green);">${langData.successTitle}</div>`;
+            html += `<div style="color:var(--text-secondary); font-size:14px; margin-top:4px;">${langData.processedCount.replace('{count}', results.length)}</div>`;
             html += `
                 <table>
                     <thead>
                         <tr>
-                            <th>文件名</th>
-                            <th>原大小</th>
-                            <th>压缩后</th>
-                            <th>状态</th>
+                            <th>${langData.tableFile}</th>
+                            <th>${langData.tableOriginal}</th>
+                            <th>${langData.tableOptimized}</th>
+                            <th>${langData.tableStatus}</th>
                         </tr>
                     </thead>
                     <tbody>
             `;
             
-            results.forEach(res => {
+            results.slice(0, 8).forEach(res => { 
                 html += `
                     <tr>
-                        <td>${res.file}</td>
+                        <td style="max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${res.file}</td>
                         <td>${res.originalSize || '-'}</td>
                         <td>${res.newSize || '-'}</td>
-                        <td class="status-${res.status}">${res.status === 'success' ? '完成' : '失败'}</td>
+                        <td><span class="badge badge-${res.status === 'success' ? 'success' : 'error'}">${res.status === 'success' ? langData.tableSuccess : langData.tableError}</span></td>
                     </tr>
                 `;
             });
             
+            if (results.length > 8) {
+                html += `<tr><td colspan="4" style="text-align:center; color:#80868b; font-size:12px;">${langData.checkLog}</td></tr>`;
+            }
+            
             html += `</tbody></table>`;
             resultDiv.innerHTML = html;
-            addLog('任务全部完成！', 'success');
+            addLog(langData.processingComplete + '!', 'success');
         }
 
-        // 页面加载时初始化 SSE
+        // 页面卸载前清理连接
+        window.addEventListener('beforeunload', () => {
+            if (eventSource) {
+                eventSource.close();
+            }
+        });
+
         initSSE();
 
-        // 暂停按钮
         pauseBtn.addEventListener('click', async () => {
             await fetch('/job/pause', { method: 'POST' });
         });
 
-        // 继续按钮
         resumeBtn.addEventListener('click', async () => {
             await fetch('/job/resume', { method: 'POST' });
         });
 
-        // 取消按钮
         cancelBtn.addEventListener('click', async () => {
-            if (cancelBtn.textContent === '取消任务') {
-                if (!confirm('确定要取消当前压缩任务吗？')) return;
+            const langData = i18n[currentLang];
+            if (cancelBtn.textContent === langData.cancel) {
+                if (!confirm(langData.cancelConfirm)) return;
                 await fetch('/job/cancel', { method: 'POST' });
             }
             resetUI();
-            cancelBtn.textContent = '取消任务';
         });
 
-        // 扫描目录
         scanBtn.addEventListener('click', async () => {
+            const langData = i18n[currentLang];
             const folderPath = folderPathInput.value.trim();
-            if (!folderPath) {
-                alert('请输入文件夹路径');
-                return;
-            }
+            if (!folderPath) return;
+
+            scanBtn.disabled = true;
+            scanBtn.innerHTML = `<div class="spinner"></div> ${langData.scanning}`;
 
             try {
                 const response = await fetch('/scan', {
@@ -417,49 +1058,48 @@
 
                 const data = await response.json();
                 if (response.ok) {
-                    folderList.innerHTML = '';
-                    data.folders.forEach(folder => {
-                        const div = document.createElement('div');
-                        div.className = `folder-item folder-depth-${folder.depth === -1 ? 0 : folder.depth + 1}`;
-                        div.innerHTML = `
-                            <input type="checkbox" id="folder-${folder.path}" value="${folder.path}">
-                            <label for="folder-${folder.path}">${folder.name} <small style="color: #999;">(${folder.path})</small></label>
-                        `;
-                        folderList.appendChild(div);
-                    });
+                    currentFolders = data.folders || [];
+                    currentFiles = data.files || [];
+                    currentRoot = data.root || null;
+                    isAllSelected = false;
+                    selectAllCheckbox.checked = false;
                     folderTree.style.display = 'block';
-                    compressBtn.style.display = 'block';
+                    renderFolderList();
                 } else {
-                    alert(data.error);
+                    alert(data.error || 'Scan failed');
                 }
             } catch (error) {
-                alert('扫描失败: ' + error.message);
+                console.error('Scan error:', error);
+                alert('Scan failed');
+            } finally {
+                scanBtn.disabled = false;
+                scanBtn.textContent = langData.scanBtn;
             }
         });
 
-        // 全选/取消全选
-        selectAllBtn.addEventListener('click', () => {
-            const checkboxes = folderList.querySelectorAll('input[type="checkbox"]');
-            isAllSelected = !isAllSelected;
-            checkboxes.forEach(cb => cb.checked = isAllSelected);
-        });
-
-        // 执行压缩
         compressBtn.addEventListener('click', async () => {
-            const selectedPaths = Array.from(folderList.querySelectorAll('input[type="checkbox"]:checked'))
+            const langData = i18n[currentLang];
+            let selectedPaths = Array.from(folderList.querySelectorAll('input[type="checkbox"]:checked'))
                 .map(cb => cb.value);
 
-            if (selectedPaths.length === 0) {
-                alert('请至少选择一个文件夹');
-                return;
+            // 如果全选了子目录，或者用户期望，这里可以包含根目录
+            // 在逻辑上，如果全选了，我们就把 root.path 也加进去（如果它不在列表里）
+            if (isAllSelected && currentRoot) {
+                if (!selectedPaths.includes(currentRoot.path)) {
+                    selectedPaths.push(currentRoot.path);
+                }
             }
 
-            // Reset UI
-            resultDiv.style.display = 'none';
-            resultDiv.innerHTML = '';
-            
+            if (selectedPaths.length === 0) return;
+
+            // 切换到任务界面
             showJobUI();
-            addLog(`已选择 ${selectedPaths.length} 个文件夹，正在获取图片列表...`);
+            
+            // 清理之前的日志和进度
+            logContainer.innerHTML = '';
+            updateProgress(0, 100); // 重置总进度条
+
+            addLog(langData.initLog.replace('{count}', selectedPaths.length));
 
             try {
                 const response = await fetch('/compress', {
@@ -468,23 +1108,17 @@
                     body: JSON.stringify({ selectedPaths })
                 });
 
-                const data = await response.json();
-
-                if (response.ok) {
-                    addLog(data.message);
-                    if (data.count === 0) {
-                        resetUI();
-                        alert('所选文件夹下没有发现图片');
-                    }
-                } else {
-                    addLog(`启动失败: ${data.error}`, 'error');
-                    resetUI();
-                    alert(data.error);
+                if (!response.ok) {
+                    const data = await response.json();
+                    addLog(`Failed: ${data.error}`, 'error');
+                    // 报错时不重置 UI，让用户看到日志
+                    compressBtn.disabled = false;
+                    compressBtn.style.opacity = '1';
                 }
             } catch (error) {
-                addLog(`请求失败: ${error.message}`, 'error');
-                resetUI();
-                alert('请求失败: ' + error.message);
+                addLog(langData.networkError, 'error');
+                compressBtn.disabled = false;
+                compressBtn.style.opacity = '1';
             }
         });
     </script>
