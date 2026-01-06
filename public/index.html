@@ -673,49 +673,51 @@
             100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(52, 199, 89, 0); }
         }
 
-        /* Log Styling */
         /* Backup & Safety Panel */
         .safety-panel {
             margin: 16px 0 24px;
             padding: 20px;
             background: rgba(255, 159, 10, 0.05);
-            border: 1px solid rgba(255, 159, 10, 0.2);
-            border-radius: 20px;
+            border: 1px solid rgba(255, 159, 10, 0.15);
+            border-radius: 24px;
+            transition: var(--transition-ios);
             display: flex;
             align-items: center;
             justify-content: space-between;
-            transition: var(--transition-ios);
-            gap: 16px;
+            gap: 20px;
         }
 
         .safety-panel.is-safe {
-            background: rgba(52, 199, 89, 0.08);
-            border-color: rgba(52, 199, 89, 0.3);
+            background: rgba(52, 199, 89, 0.05);
+            border-color: rgba(52, 199, 89, 0.15);
+            box-shadow: 0 10px 30px rgba(52, 199, 89, 0.05);
         }
 
         .safety-info {
             display: flex;
             align-items: center;
-            gap: 14px;
+            gap: 16px;
             flex: 1;
         }
 
         .safety-icon-wrapper {
-            width: 40px;
-            height: 40px;
-            border-radius: 12px;
+            width: 48px;
+            height: 48px;
+            background: rgba(255, 159, 10, 0.1);
+            border-radius: 14px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 20px;
-            background: rgba(255, 159, 10, 0.15);
             color: #ff9f0a;
+            font-size: 24px;
             transition: var(--transition-ios);
+            flex-shrink: 0;
         }
 
         .is-safe .safety-icon-wrapper {
-            background: rgba(52, 199, 89, 0.2);
+            background: rgba(52, 199, 89, 0.15);
             color: var(--ios-green);
+            transform: rotate(360deg);
         }
 
         .safety-text {
@@ -725,14 +727,16 @@
         }
 
         .safety-title {
-            font-weight: 600;
-            font-size: 15px;
+            font-weight: 700;
+            font-size: 16px;
             color: var(--text-main);
+            transition: var(--transition-ios);
         }
 
         .safety-desc {
-            font-size: 12px;
+            font-size: 13px;
             color: var(--text-dim);
+            line-height: 1.4;
             opacity: 0.8;
         }
 
@@ -764,10 +768,10 @@
         .switch-slider:before {
             position: absolute;
             content: "";
-            height: 27px;
-            width: 27px;
-            left: 1px;
-            bottom: 0.5px;
+            height: 25px;
+            width: 25px;
+            left: 1.5px;
+            bottom: 1.5px;
             background-color: white;
             transition: .4s cubic-bezier(0.4, 0, 0.2, 1);
             border-radius: 50%;
@@ -1215,6 +1219,34 @@
             if (typeof updateSelectionStats === 'function') {
                 updateSelectionStats();
             }
+            
+            // Update Safety UI
+            if (typeof updateSafetyUI === 'function') {
+                updateSafetyUI();
+            }
+        }
+
+        function updateSafetyUI() {
+            const langData = i18n[currentLang];
+            const checkbox = document.getElementById('backupCheckbox');
+            const panel = document.getElementById('safetyPanel');
+            const icon = document.getElementById('safetyIcon');
+            const title = document.getElementById('safetyTitle');
+            const desc = document.getElementById('safetyDesc');
+            
+            if (!checkbox || !panel) return;
+            
+            if (checkbox.checked) {
+                panel.classList.add('is-safe');
+                icon.textContent = '🛡️';
+                title.textContent = langData.safetySafeTitle;
+                desc.textContent = langData.safetySafeDesc;
+            } else {
+                panel.classList.remove('is-safe');
+                icon.textContent = '⚠️';
+                title.textContent = langData.safetyWarningTitle;
+                desc.textContent = langData.safetyWarningDesc;
+            }
         }
 
         // Initialize Theme
@@ -1230,6 +1262,14 @@
             const isLight = document.documentElement.classList.contains('light-mode');
             localStorage.setItem('theme', isLight ? 'light' : 'dark');
         });
+
+        // Initialize Backup Safety UI
+        const backupCheckbox = document.getElementById('backupCheckbox');
+        if (backupCheckbox) {
+            backupCheckbox.addEventListener('change', updateSafetyUI);
+            // Initial call to set correct state
+            updateSafetyUI();
+        }
 
         // Initialize Language
         const scanBtn = document.getElementById('scanBtn');

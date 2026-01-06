@@ -11,12 +11,14 @@ Zipper is a powerful, local-first image optimization tool built with Node.js. It
 
 ### 🚀 Features
 
-- **Recursive Scanning**: Deeply scan folders to find all images (JPG, JPEG, PNG).
+- **iOS 26 Design**: A stunning Glassmorphism UI inspired by iOS 26, featuring smooth transitions and vivid aesthetics.
+- **Safety First (Backup Mode)**: A smart toggle switch with a safety panel that prevents accidental overwrites by creating automatic backups.
+- **Recursive Scanning**: Deeply scan folders to find all images (JPG, JPEG, PNG, WebP).
 - **Intelligent Compression**: Powered by [Sharp](https://github.com/lovell/sharp), automatically balancing quality and file size (target < 300KB).
-- **Real-time Feedback**: Live progress bars and activity logs using Server-Sent Events (SSE).
+- **Real-time Feedback**: Live progress tracking and interactive activity logs using Server-Sent Events (SSE).
 - **Concurrency Control**: Multi-worker processing for high-performance optimization.
-- **Job Management**: Pause, resume, or cancel tasks at any time.
-- **Modern UI**: Clean, Gemini-inspired dark mode interface with bilingual support (EN/ZH).
+- **Job Management**: Fully controllable tasks with Pause, Resume, and Cancel capabilities.
+- **Bilingual Support**: Instant switching between English and Chinese (ZH/EN).
 - **Local First**: All processing happens on your machine. No images are uploaded to any server.
 
 ### 🛠 Tech Stack
@@ -54,13 +56,14 @@ Zipper 是一款基于 Node.js 开发的高性能本地图片批量压缩工具�
 
 ### 🚀 功能特性
 
-- **递归扫描**: 深度遍历文件夹，支持查找所有图片格式（JPG, JPEG, PNG）。
+- **iOS 26 设计风格**: 令人惊叹的 iOS 26 玻璃拟态（Glassmorphism）UI，提供流畅的过渡动画与极佳的视觉美感。
+- **安全第一 (备份模式)**: 智能 iOS 风格开关配合安全面板，自动创建原图备份，彻底防止意外覆盖。
+- **递归扫描**: 深度遍历文件夹，支持查找 JPG, JPEG, PNG, WebP 等多种主流图片格式。
 - **智能压缩**: 基于 [Sharp](https://github.com/lovell/sharp) 引擎，自动平衡画质与体积（默认目标 < 300KB）。
-- **实时反馈**: 使用 SSE 技术实现秒级同步的进度条和处理日志。
-- **并发处理**: 支持多线程并发优化，充分利用 CPU 性能。
-- **任务控制**: 处理过程中支持随时暂停、继续或取消任务。
-- **现代化 UI**: 极简的 Gemini 风格暗黑模式界面，支持中英文双语切换。
-- **隐私安全**: 所有操作均在本地完成，图片不会上传到任何服务器。
+- **实时反馈**: 使用 SSE 技术实现秒级同步的交互式进度条和处理日志。
+- **任务控制**: 处理过程中支持随时暂停、继续或取消任务，完全掌控进度。
+- **双语支持**: 一键切换中英文界面 (ZH/EN)。
+- **隐私安全**: 所有操作均在本地完成，图片绝不上传，保护您的个人隐私。
 
 ### 🛠 技术栈
 
