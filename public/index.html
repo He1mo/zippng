@@ -616,18 +616,61 @@
             background: var(--ios-gradient);
             background-size: 200% 100%;
             border-radius: 6px;
-            transition: width 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+            transition: width 0.6s cubic-bezier(0.2, 0.8, 0.2, 1), background 0.3s ease;
             box-shadow: 0 0 20px rgba(0, 122, 255, 0.6);
             animation: ios-bar-shimmer 2s linear infinite;
         }
 
-        .light-mode .progress-bar-fill {
-            box-shadow: 0 2px 10px rgba(0, 122, 255, 0.3);
+        .progress-bar-fill.paused {
+            background: #8e8e93; /* iOS Gray */
+            box-shadow: none;
+            animation-play-state: paused;
         }
 
         @keyframes ios-bar-shimmer {
-            0% { background-position: 0% 0%; }
-            100% { background-position: 200% 0%; }
+            0% { background-position: 200% 0%; }
+            100% { background-position: 0% 0%; }
+        }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .status-pill.running {
+            background: rgba(52, 199, 89, 0.15);
+            color: var(--ios-green);
+            border: 1px solid rgba(52, 199, 89, 0.3);
+        }
+
+        .status-pill.paused {
+            background: rgba(255, 159, 10, 0.15);
+            color: #ff9f0a; /* iOS Orange */
+            border: 1px solid rgba(255, 159, 10, 0.3);
+        }
+
+        .status-pill .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        .status-pill.running .dot {
+            animation: pulse-green 2s infinite;
+        }
+
+        @keyframes pulse-green {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(52, 199, 89, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(52, 199, 89, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(52, 199, 89, 0); }
         }
 
         /* Log Styling */
@@ -717,12 +760,30 @@
         }
 
         /* Summary Table */
+        .result-table-container {
+            max-height: 400px;
+            overflow-y: auto;
+            border-radius: 12px;
+            background: rgba(0, 0, 0, 0.05);
+            scrollbar-width: thin;
+        }
+
+        .light-mode .result-table-container {
+            background: rgba(0, 0, 0, 0.02);
+        }
+
         .result-table {
             width: 100%;
-            border-collapse: collapse;
+            border-collapse: separate;
+            border-spacing: 0;
         }
 
         .result-table th {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
             text-align: left;
             padding: 18px;
             font-size: 13px;
@@ -875,6 +936,10 @@
         <!-- Phase 2: Progress & Processing -->
         <section id="phase-work" class="glass-card phase-section">
             <div class="progress-section">
+                <div id="statusPill" class="status-pill running">
+                    <span class="dot"></span>
+                    <span id="statusText" data-i18n="optimizing">正在优化图片...</span>
+                </div>
                 <div class="progress-title" id="progressTitle" data-i18n="optimizing">正在优化图片...</div>
                 <div class="progress-stats" id="progressStats">0 / 0 (0%)</div>
                 
@@ -1281,16 +1346,44 @@
             return 'id-' + encodeURIComponent(str).replace(/%/g, '_').replace(/\./g, '-');
         }
 
-        function updateProgress(current, total) {
+        let currentStatus = 'running'; // 全局任务状态
+        let lastProgress = { current: 0, total: 0 }; // 缓存最后的进度值
+
+        function updateProgress(current, total, status) {
             const langData = i18n[currentLang];
-            const curr = parseInt(current) || 0;
-            const tot = parseInt(total) || 0;
+            
+            // 如果传入了 status，更新全局状态
+            if (status) {
+                currentStatus = status;
+            }
+
+            // 如果传入了进度值，更新缓存；否则使用缓存值
+            if (current !== null && current !== undefined) lastProgress.current = parseInt(current);
+            if (total !== null && total !== undefined) lastProgress.total = parseInt(total);
+
+            const curr = lastProgress.current;
+            const tot = lastProgress.total;
             let percent = tot > 0 ? Math.round((curr / tot) * 100) : 0;
             if (percent > 100) percent = 100;
             
             progressBarFill.style.width = `${percent}%`;
             progressStats.textContent = `${curr} / ${tot} (${percent}%)`;
-            progressTitle.textContent = percent === 100 ? langData.processingComplete : langData.optimizing;
+            
+            const statusPill = document.getElementById('statusPill');
+            const statusText = document.getElementById('statusText');
+            
+            // 使用全局状态 currentStatus 来决定 UI
+            if (currentStatus === 'paused') {
+                progressBarFill.classList.add('paused');
+                statusPill.className = 'status-pill paused';
+                statusText.textContent = langData.taskPaused;
+                progressTitle.textContent = langData.taskPaused;
+            } else {
+                progressBarFill.classList.remove('paused');
+                statusPill.className = 'status-pill running';
+                statusText.textContent = percent === 100 ? langData.processingComplete : langData.optimizing;
+                progressTitle.textContent = percent === 100 ? langData.processingComplete : langData.optimizing;
+            }
         }
 
         function initSSE() {
@@ -1323,11 +1416,10 @@
                         case 'init':
                             if (data.status === 'running' || data.status === 'paused') {
                                 showJobUI();
-                                updateProgress(data.current, data.total);
+                                updateProgress(data.current, data.total, data.status);
                                 if (data.status === 'paused') {
                                     pauseBtn.style.display = 'none';
                                     resumeBtn.style.display = 'inline-flex';
-                                    progressTitle.textContent = langData.taskPaused;
                                 }
                             }
                             break;
@@ -1335,17 +1427,16 @@
                         case 'status':
                             if (data.status === 'running') {
                                 showJobUI();
-                                updateProgress(0, data.total);
+                                updateProgress(0, data.total, 'running');
                                 pauseBtn.style.display = 'inline-flex';
                                 resumeBtn.style.display = 'none';
-                                progressTitle.textContent = langData.optimizing;
                                 addLog(langData.startBtn + '...', 'info');
                             } else if (data.status === 'paused') {
+                                updateProgress(null, null, 'paused');
                                 pauseBtn.style.display = 'none';
                                 resumeBtn.style.display = 'inline-flex';
-                                progressTitle.textContent = langData.taskPaused;
                             } else if (data.status === 'completed') {
-                                updateProgress(data.total, data.total);
+                                updateProgress(data.total, data.total, 'running');
                                 finishJob(data.results);
                             } else if (data.status === 'cancelled') {
                                 resetUI();
@@ -1357,7 +1448,8 @@
                             break;
 
                         case 'progress':
-                            updateProgress(data.current, data.total);
+                            // 不再强制传 'running'，而是让 updateProgress 使用当前的全局状态
+                            updateProgress(data.current, data.total); 
                             
                             if (data.result) {
                                 const res = data.result;
@@ -1414,7 +1506,7 @@
                     <tbody>
             `;
             
-            results.slice(0, 10).forEach(res => { 
+            results.forEach(res => { 
                 const isSuccess = res.status === 'success';
                 html += `
                     <tr>
@@ -1429,16 +1521,6 @@
                     </tr>
                 `;
             });
-            
-            if (results.length > 10) {
-                html += `
-                    <tr>
-                        <td colspan="4" style="text-align:center; color:var(--text-dim); font-size:12px; padding: 24px;">
-                            ${langData.checkLog}
-                        </td>
-                    </tr>
-                `;
-            }
             
             html += `</tbody></table>`;
             resultTableContainer.innerHTML = html;
@@ -1455,11 +1537,47 @@
         initSSE();
 
         pauseBtn.addEventListener('click', async () => {
-            await fetch('/job/pause', { method: 'POST' });
+            const originalText = pauseBtn.innerHTML;
+            pauseBtn.disabled = true;
+            pauseBtn.innerHTML = `<div class="spinner" style="width:14px;height:14px;border-width:2px;"></div>`;
+            try {
+                // 立即切换 UI 状态
+                updateProgress(null, null, 'paused');
+                pauseBtn.style.display = 'none';
+                resumeBtn.style.display = 'inline-flex';
+                await fetch('/job/pause', { method: 'POST' });
+            } catch (err) {
+                // 如果失败，恢复状态
+                updateProgress(null, null, 'running');
+                pauseBtn.style.display = 'inline-flex';
+                resumeBtn.style.display = 'none';
+                console.error('Pause failed:', err);
+            } finally {
+                pauseBtn.disabled = false;
+                pauseBtn.innerHTML = originalText;
+            }
         });
 
         resumeBtn.addEventListener('click', async () => {
-            await fetch('/job/resume', { method: 'POST' });
+            const originalText = resumeBtn.innerHTML;
+            resumeBtn.disabled = true;
+            resumeBtn.innerHTML = `<div class="spinner" style="width:14px;height:14px;border-width:2px;"></div>`;
+            try {
+                // 立即切换 UI 状态
+                updateProgress(null, null, 'running');
+                resumeBtn.style.display = 'none';
+                pauseBtn.style.display = 'inline-flex';
+                await fetch('/job/resume', { method: 'POST' });
+            } catch (err) {
+                // 如果失败，恢复状态
+                updateProgress(null, null, 'paused');
+                resumeBtn.style.display = 'inline-flex';
+                pauseBtn.style.display = 'none';
+                console.error('Resume failed:', err);
+            } finally {
+                resumeBtn.disabled = false;
+                resumeBtn.innerHTML = originalText;
+            }
         });
 
         cancelBtn.addEventListener('click', async () => {
