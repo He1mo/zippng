@@ -9,6 +9,21 @@ const port = 3000;
 app.use(express.json());
 app.use(express.static('public'));
 
+// 获取图片接口 (用于预览)
+app.get('/image', async (req, res) => {
+    const filePath = req.query.path;
+    if (!filePath) return res.status(400).send('Path is required');
+    try {
+        if (fs.existsSync(filePath)) {
+            res.sendFile(filePath);
+        } else {
+            res.status(404).send('File not found');
+        }
+    } catch (err) {
+        res.status(500).send(err.message);
+    }
+});
+
 // 任务管理状态
 let currentJob = {
     files: [],
@@ -335,7 +350,8 @@ app.post('/scan', async (req, res) => {
             const imageFile = isImage ? [{
                 name: path.basename(absolutePath),
                 path: absolutePath,
-                size: stats.size
+                size: stats.size,
+                mtime: stats.mtimeMs
             }] : [];
 
             return res.json({
@@ -365,7 +381,8 @@ app.post('/scan', async (req, res) => {
                     imageFiles.push({
                         name: f.name,
                         path: filePath,
-                        size: fileStats.size
+                        size: fileStats.size,
+                        mtime: fileStats.mtimeMs
                     });
                 }
             }

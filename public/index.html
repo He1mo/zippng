@@ -369,6 +369,73 @@
             background: rgba(0, 0, 0, 0.01);
         }
 
+        /* Custom Checkbox iOS Style */
+        .checkbox-wrapper {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 22px;
+            height: 22px;
+            position: relative;
+            cursor: pointer;
+        }
+
+        .checkbox-wrapper input[type="checkbox"] {
+            position: absolute;
+            opacity: 0;
+            cursor: pointer;
+            height: 0; width: 0;
+        }
+
+        .checkmark {
+            position: absolute;
+            top: 0; left: 0;
+            height: 22px; width: 22px;
+            background-color: transparent;
+            border: 2px solid var(--glass-border);
+            border-radius: 7px;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .checkbox-wrapper:hover .checkmark {
+            border-color: var(--ios-blue);
+            background-color: rgba(0, 122, 255, 0.05);
+        }
+
+        .checkbox-wrapper input:checked ~ .checkmark {
+            background-color: var(--ios-blue);
+            border-color: var(--ios-blue);
+        }
+
+        .checkbox-wrapper input:indeterminate ~ .checkmark {
+            background-color: var(--ios-blue);
+            border-color: var(--ios-blue);
+        }
+
+        .checkmark:after {
+            content: "";
+            position: absolute;
+            display: none;
+            left: 7px; top: 3px;
+            width: 5px; height: 10px;
+            border: solid white;
+            border-width: 0 2.5px 2.5px 0;
+            transform: rotate(45deg);
+        }
+
+        .checkbox-wrapper input:checked ~ .checkmark:after {
+            display: block;
+        }
+
+        /* Indeterminate dash */
+        .checkbox-wrapper input:indeterminate ~ .checkmark:after {
+            display: block;
+            left: 5px; top: 8px;
+            width: 10px; height: 0;
+            border-width: 0 0 2.5px 0;
+            transform: none;
+        }
+
         .tree-header {
             padding: 18px 28px;
             background: rgba(255, 255, 255, 0.04);
@@ -444,11 +511,47 @@
         .folder-icon { 
             font-size: 22px; 
             filter: drop-shadow(0 4px 8px rgba(0,0,0,0.2));
-            transition: transform 0.3s ease;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            overflow: hidden;
+            flex-shrink: 0;
         }
-        
+
         .folder-item:hover .folder-icon {
-            transform: scale(1.15) rotate(5deg);
+            transform: scale(1.1) translateY(-2px);
+            border-color: var(--ios-blue);
+        }
+
+        .img-thumb {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            background-color: #eee;
+            transition: opacity 0.3s ease;
+            opacity: 0;
+        }
+
+        .img-thumb.loaded {
+            opacity: 1;
+        }
+
+        .folder-icon.is-image {
+            background: linear-gradient(135deg, #f0f0f5 0%, #e0e0e5 100%);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .folder-date {
+            font-size: 13px;
+            color: var(--text-dim);
+            text-align: right;
+            font-variant-numeric: tabular-nums;
         }
         
         .selection-stats {
@@ -753,7 +856,10 @@
 
                 <div class="tree-container">
                     <div class="tree-header">
-                        <input type="checkbox" id="selectAllCheckbox">
+                        <label class="checkbox-wrapper">
+                            <input type="checkbox" id="selectAllCheckbox">
+                            <span class="checkmark"></span>
+                        </label>
                         <span id="sortName" class="sort-icon" data-i18n="sortByName">名称</span>
                         <span id="sortTime" class="sort-icon" data-i18n="sortByTime" style="text-align: right; justify-content: flex-end;">日期</span>
                     </div>
@@ -926,16 +1032,6 @@
         });
 
         // Initialize Language
-        updateUI();
-
-        document.querySelectorAll('.lang-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                currentLang = btn.getAttribute('data-lang');
-                localStorage.setItem('lang', currentLang);
-                updateUI();
-            });
-        });
-
         const scanBtn = document.getElementById('scanBtn');
         const compressBtn = document.getElementById('compressBtn');
         const folderPathInput = document.getElementById('folderPath');
@@ -965,6 +1061,16 @@
         const resultSummary = document.getElementById('resultSummary');
         const resultTableContainer = document.getElementById('resultTableContainer');
 
+        updateUI();
+
+        document.querySelectorAll('.lang-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                currentLang = btn.getAttribute('data-lang');
+                localStorage.setItem('lang', currentLang);
+                updateUI();
+            });
+        });
+
         let isAllSelected = false;
         let eventSource = null;
         let currentFolders = [];
@@ -990,13 +1096,18 @@
 
         function formatTime(ms) {
             if (!ms) return '-';
-            const date = new Date(ms);
+            // Ensure ms is a number
+            const timestamp = typeof ms === 'string' ? parseFloat(ms) : ms;
+            const date = new Date(timestamp);
+            if (isNaN(date.getTime())) return '-';
             return date.toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
         }
 
         function updateSelectionStats() {
-            const checkedCbs = folderList.querySelectorAll('input:checked');
+            const allCbs = folderList.querySelectorAll('input[type="checkbox"]');
+            const checkedCbs = folderList.querySelectorAll('input[type="checkbox"]:checked');
             const stats = document.getElementById('selectionStats');
+            
             if (checkedCbs.length > 0) {
                 stats.style.display = 'block';
                 stats.textContent = currentLang === 'zh' ? `已选择 ${checkedCbs.length} 项` : `Selected ${checkedCbs.length} items`;
@@ -1008,9 +1119,20 @@
             compressBtn.disabled = checkedCbs.length === 0;
             compressBtn.style.opacity = checkedCbs.length > 0 ? '1' : '0.4';
             
-            // Update Select All checkbox
-            const allCbs = folderList.querySelectorAll('input');
-            selectAllCheckbox.checked = (allCbs.length > 0 && checkedCbs.length === allCbs.length);
+            // Update Select All checkbox state
+            if (allCbs.length === 0) {
+                selectAllCheckbox.checked = false;
+                selectAllCheckbox.indeterminate = false;
+            } else if (checkedCbs.length === allCbs.length) {
+                selectAllCheckbox.checked = true;
+                selectAllCheckbox.indeterminate = false;
+            } else if (checkedCbs.length === 0) {
+                selectAllCheckbox.checked = false;
+                selectAllCheckbox.indeterminate = false;
+            } else {
+                selectAllCheckbox.checked = false;
+                selectAllCheckbox.indeterminate = true;
+            }
         }
 
         function renderFolderList() {
@@ -1065,16 +1187,28 @@
                 const safeId = getSafeId(item.path);
                 const isFolder = item.type === 'folder';
                 
+                // For images, we use a specialized icon style
+                const iconHtml = isFolder 
+                    ? `<span class="folder-icon">📁</span>`
+                    : `<span class="folder-icon is-image">
+                        <img class="img-thumb" src="/image?path=${encodeURIComponent(item.path)}" 
+                             onload="this.classList.add('loaded')" 
+                             onerror="this.style.display='none'; this.parentElement.innerHTML='🖼️'">
+                       </span>`;
+
                 div.innerHTML = `
-                    <input type="checkbox" id="${isFolder ? 'folder' : 'file'}-${safeId}" value="${item.path}" ${isAllSelected ? 'checked' : ''}>
+                    <label class="checkbox-wrapper" onclick="event.stopPropagation()">
+                        <input type="checkbox" id="${isFolder ? 'folder' : 'file'}-${safeId}" value="${item.path}" ${isAllSelected ? 'checked' : ''}>
+                        <span class="checkmark"></span>
+                    </label>
                     <div class="folder-info">
-                        <span class="folder-icon">${isFolder ? '📁' : '🖼️'}</span>
+                        ${iconHtml}
                         <div style="min-width: 0;">
                             <div class="folder-name">${item.name}</div>
                             <div class="folder-path">${item.path}</div>
                         </div>
                     </div>
-                    <div class="folder-date">${isFolder ? formatTime(item.mtime) : '-'}</div>
+                    <div class="folder-date">${formatTime(item.mtime)}</div>
                 `;
 
                 // Row click interaction
