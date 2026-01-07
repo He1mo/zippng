@@ -1112,6 +1112,9 @@
     </div>
 
     <script>
+        /**
+         * 1. 配置与状态管理 (State & Config)
+         */
         const i18n = {
             zh: {
                 title: 'Zipper',
@@ -1197,132 +1200,82 @@
             }
         };
 
-        let currentLang = localStorage.getItem('lang') || 'zh';
-        let backupCheckbox;
+        const AppState = {
+            lang: localStorage.getItem('lang') || 'zh',
+            theme: localStorage.getItem('theme') || 'dark',
+            currentRoot: null,
+            currentFolders: [],
+            currentFiles: [],
+            sortConfig: { key: null, direction: 'asc' },
+            eventSource: null,
+            reconnectAttempts: 0,
+            maxReconnectAttempts: 5
+        };
 
-        function updateUI() {
-            const langData = i18n[currentLang];
+        /**
+         * 2. DOM 元素缓存
+         */
+        const UI = {
+            folderPath: document.getElementById('folderPath'),
+            scanBtn: document.getElementById('scanBtn'),
+            backupCheckbox: document.getElementById('backupCheckbox'),
+            folderTree: document.getElementById('folderTree'),
+            folderList: document.getElementById('folderList'),
+            selectAllCheckbox: document.getElementById('selectAllCheckbox'),
+            compressBtn: document.getElementById('compressBtn'),
+            phaseScan: document.getElementById('phase-scan'),
+            phaseWork: document.getElementById('phase-work'),
+            phaseResult: document.getElementById('phase-result'),
+            progressBarFill: document.getElementById('progressBarFill'),
+            progressStats: document.getElementById('progressStats'),
+            logContainer: document.getElementById('logContainer'),
+            statusText: document.getElementById('statusText'),
+            pauseBtn: document.getElementById('pauseBtn'),
+            resumeBtn: document.getElementById('resumeBtn'),
+            cancelBtn: document.getElementById('cancelBtn')
+        };
+
+        /**
+         * 3. UI 更新逻辑 (UI Components)
+         */
+        function updateI18n() {
+            const data = i18n[AppState.lang];
             document.querySelectorAll('[data-i18n]').forEach(el => {
                 const key = el.getAttribute('data-i18n');
-                if (langData[key]) el.textContent = langData[key];
+                if (data[key]) el.textContent = data[key];
             });
             document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
                 const key = el.getAttribute('data-i18n-placeholder');
-                if (langData[key]) el.placeholder = langData[key];
+                if (data[key]) el.placeholder = data[key];
             });
-            
-            // Update active state of lang buttons
             document.querySelectorAll('.lang-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.getAttribute('data-lang') === currentLang);
+                btn.classList.toggle('active', btn.getAttribute('data-lang') === AppState.lang);
             });
-
-            // Update selection stats if visible
-            if (typeof updateSelectionStats === 'function') {
-                updateSelectionStats();
-            }
-            
-            // Update Safety UI
-            if (typeof updateSafetyUI === 'function') {
-                updateSafetyUI();
-            }
+            updateSafetyUI();
         }
 
         function updateSafetyUI() {
-            const langData = i18n[currentLang];
+            const data = i18n[AppState.lang];
             const panel = document.getElementById('safetyPanel');
             const icon = document.getElementById('safetyIcon');
             const title = document.getElementById('safetyTitle');
             const desc = document.getElementById('safetyDesc');
             
-            if (!backupCheckbox || !panel) return;
-            
-            if (backupCheckbox.checked) {
+            if (UI.backupCheckbox.checked) {
                 panel.classList.add('is-safe');
                 icon.textContent = '🛡️';
-                title.textContent = langData.safetySafeTitle;
-                desc.textContent = langData.safetySafeDesc;
+                title.textContent = data.safetySafeTitle;
+                desc.textContent = data.safetySafeDesc;
             } else {
                 panel.classList.remove('is-safe');
                 icon.textContent = '⚠️';
-                title.textContent = langData.safetyWarningTitle;
-                desc.textContent = langData.safetyWarningDesc;
+                title.textContent = data.safetyWarningTitle;
+                desc.textContent = data.safetyWarningDesc;
             }
         }
 
-        // Initialize Theme
-        const themeToggle = document.getElementById('themeToggle');
-        const savedTheme = localStorage.getItem('theme') || 'dark';
-        
-        if (savedTheme === 'light') {
-            document.documentElement.classList.add('light-mode');
-        }
-
-        themeToggle.addEventListener('click', () => {
-            document.documentElement.classList.toggle('light-mode');
-            const isLight = document.documentElement.classList.contains('light-mode');
-            localStorage.setItem('theme', isLight ? 'light' : 'dark');
-        });
-
-        // Initialize Backup Safety UI
-        backupCheckbox = document.getElementById('backupCheckbox');
-        if (backupCheckbox) {
-            backupCheckbox.addEventListener('change', updateSafetyUI);
-            // Initial call to set correct state
-            updateSafetyUI();
-        }
-
-        // Initialize Language
-        const scanBtn = document.getElementById('scanBtn');
-        const compressBtn = document.getElementById('compressBtn');
-        const folderPathInput = document.getElementById('folderPath');
-        
-        // Phase Containers
-        const phaseScan = document.getElementById('phase-scan');
-        const phaseWork = document.getElementById('phase-work');
-        const phaseResult = document.getElementById('phase-result');
-        
-        // Scan Phase Elements
-        const folderTree = document.getElementById('folderTree');
-        const folderList = document.getElementById('folderList');
-        const selectAllCheckbox = document.getElementById('selectAllCheckbox');
-        const sortNameBtn = document.getElementById('sortName');
-        const sortTimeBtn = document.getElementById('sortTime');
-        
-        // Work Phase Elements
-        const progressBarFill = document.getElementById('progressBarFill');
-        const progressTitle = document.getElementById('progressTitle');
-        const progressStats = document.getElementById('progressStats');
-        const logContainer = document.getElementById('logContainer');
-        const pauseBtn = document.getElementById('pauseBtn');
-        const resumeBtn = document.getElementById('resumeBtn');
-        const cancelBtn = document.getElementById('cancelBtn');
-
-        // Result Phase Elements
-        const resultSummary = document.getElementById('resultSummary');
-        const resultTableContainer = document.getElementById('resultTableContainer');
-
-        updateUI();
-
-        document.querySelectorAll('.lang-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                currentLang = btn.getAttribute('data-lang');
-                localStorage.setItem('lang', currentLang);
-                updateUI();
-                if (typeof updateSafetyUI === 'function') {
-                    updateSafetyUI();
-                }
-            });
-        });
-
-        let isAllSelected = false;
-        let eventSource = null;
-        let currentFolders = [];
-        let currentFiles = [];
-        let currentRoot = null;
-        let sortConfig = { key: null, direction: 'asc' };
-
         function switchPhase(phaseId) {
-            document.querySelectorAll('.phase-section').forEach(p => p.classList.remove('phase-active'));
+            [UI.phaseScan, UI.phaseWork, UI.phaseResult].forEach(p => p.classList.remove('phase-active'));
             document.getElementById(phaseId).classList.add('phase-active');
         }
 
@@ -1330,551 +1283,210 @@
             const div = document.createElement('div');
             div.className = 'log-entry';
             const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            div.innerHTML = `
-                <span class="log-time">${time}</span>
-                <span class="log-msg-${type}">${message}</span>
-            `;
-            logContainer.prepend(div);
+            div.innerHTML = `<span class="log-time">${time}</span><span class="log-msg-${type}">${message}</span>`;
+            UI.logContainer.prepend(div);
         }
 
-        function formatTime(ms) {
-            if (!ms) return '-';
-            // Ensure ms is a number
-            const timestamp = typeof ms === 'string' ? parseFloat(ms) : ms;
-            const date = new Date(timestamp);
-            if (isNaN(date.getTime())) return '-';
-            return date.toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-        }
-
-        function updateSelectionStats() {
-            const allCbs = folderList.querySelectorAll('input[type="checkbox"]');
-            const checkedCbs = folderList.querySelectorAll('input[type="checkbox"]:checked');
-            const stats = document.getElementById('selectionStats');
-            
-            if (checkedCbs.length > 0) {
-                stats.style.display = 'block';
-                stats.textContent = currentLang === 'zh' ? `已选择 ${checkedCbs.length} 项` : `Selected ${checkedCbs.length} items`;
-            } else {
-                stats.style.display = 'none';
-            }
-            
-            // Update button state
-            compressBtn.disabled = checkedCbs.length === 0;
-            compressBtn.style.opacity = checkedCbs.length > 0 ? '1' : '0.4';
-            
-            // Update Select All checkbox state
-            if (allCbs.length === 0) {
-                selectAllCheckbox.checked = false;
-                selectAllCheckbox.indeterminate = false;
-            } else if (checkedCbs.length === allCbs.length) {
-                selectAllCheckbox.checked = true;
-                selectAllCheckbox.indeterminate = false;
-            } else if (checkedCbs.length === 0) {
-                selectAllCheckbox.checked = false;
-                selectAllCheckbox.indeterminate = false;
-            } else {
-                selectAllCheckbox.checked = false;
-                selectAllCheckbox.indeterminate = true;
-            }
-        }
-
-        function renderFolderList() {
-            if (!folderList) return;
-            folderList.innerHTML = '';
-            
-            // Update root path display
-            const rootPathDisplay = document.getElementById('rootPathDisplay');
-            if (currentRoot && rootPathDisplay) {
-                rootPathDisplay.textContent = currentRoot.path;
-            }
-
-            // 2. Filter out root from list
-            let displayFolders = currentFolders.filter(f => {
-                if (currentRoot && f.path === currentRoot.path) return false;
-                if (f.depth === -1) return false;
-                return true;
-            });
-
-            // 3. Sorting
-            if (sortConfig.key) {
-                displayFolders.sort((a, b) => {
-                    let valA = a[sortConfig.key];
-                    let valB = b[sortConfig.key];
-                    if (typeof valA === 'string') {
-                        return sortConfig.direction === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
-                    }
-                    return sortConfig.direction === 'asc' ? valA - valB : valB - valA;
-                });
-            }
-
-            // 4. Render items
-            const allItems = [
-                ...displayFolders.map(f => ({ ...f, type: 'folder' })),
-                ...(currentFiles || []).map(f => ({ ...f, type: 'file' }))
-            ];
-
-            if (allItems.length === 0) {
-                const empty = document.createElement('div');
-                empty.style.padding = '48px';
-                empty.style.textAlign = 'center';
-                empty.style.color = 'var(--text-dim)';
-                empty.textContent = currentLang === 'zh' ? '没有发现可压缩的图片文件' : 'No compressible images found';
-                folderList.appendChild(empty);
-                updateSelectionStats();
-                return;
-            }
-
-            allItems.forEach(item => {
-                const div = document.createElement('div');
-                div.className = `folder-item ${isAllSelected ? 'selected' : ''}`;
-                const safeId = getSafeId(item.path);
-                const isFolder = item.type === 'folder';
-                
-                // For images, we use a specialized icon style
-                const iconHtml = isFolder 
-                    ? `<span class="folder-icon">📁</span>`
-                    : `<span class="folder-icon is-image">
-                        <img class="img-thumb" src="/image?path=${encodeURIComponent(item.path)}" 
-                             onload="this.classList.add('loaded')" 
-                             onerror="this.style.display='none'; this.parentElement.innerHTML='🖼️'">
-                       </span>`;
-
-                div.innerHTML = `
-                    <label class="checkbox-wrapper" onclick="event.stopPropagation()">
-                        <input type="checkbox" id="${isFolder ? 'folder' : 'file'}-${safeId}" value="${item.path}" ${isAllSelected ? 'checked' : ''}>
-                        <span class="checkmark"></span>
-                    </label>
-                    <div class="folder-info">
-                        ${iconHtml}
-                        <div style="min-width: 0;">
-                            <div class="folder-name">${item.name}</div>
-                            <div class="folder-path">${item.path}</div>
-                        </div>
-                    </div>
-                    <div class="folder-date">${formatTime(item.mtime)}</div>
-                `;
-
-                // Row click interaction
-                div.addEventListener('click', (e) => {
-                    if (e.target.tagName === 'INPUT') return;
-                    const cb = div.querySelector('input');
-                    cb.checked = !cb.checked;
-                    div.classList.toggle('selected', cb.checked);
-                    updateSelectionStats();
-                });
-
-                // Checkbox change interaction
-                div.querySelector('input').addEventListener('change', (e) => {
-                    div.classList.toggle('selected', e.target.checked);
-                    updateSelectionStats();
-                });
-
-                folderList.appendChild(div);
-            });
-
-            updateSelectionStats();
-        }
-
-        function updateSortUI() {
-            [sortNameBtn, sortTimeBtn].forEach(btn => {
-                btn.classList.remove('sort-asc', 'sort-desc');
-            });
-            if (sortConfig.key) {
-                const btn = sortConfig.key === 'name' ? sortNameBtn : sortTimeBtn;
-                btn.classList.add(sortConfig.direction === 'asc' ? 'sort-asc' : 'sort-desc');
-            }
-        }
-
-        sortNameBtn.addEventListener('click', () => {
-            if (sortConfig.key === 'name') {
-                sortConfig.direction = sortConfig.direction === 'asc' ? 'desc' : 'asc';
-            } else {
-                sortConfig.key = 'name';
-                sortConfig.direction = 'asc';
-            }
-            updateSortUI();
-            renderFolderList();
-        });
-
-        sortTimeBtn.addEventListener('click', () => {
-            if (sortConfig.key === 'mtime') {
-                sortConfig.direction = sortConfig.direction === 'asc' ? 'desc' : 'asc';
-            } else {
-                sortConfig.key = 'mtime';
-                sortConfig.direction = 'asc';
-            }
-            updateSortUI();
-            renderFolderList();
-        });
-
-        selectAllCheckbox.addEventListener('change', (e) => {
-            isAllSelected = e.target.checked;
-            folderList.querySelectorAll('.folder-item').forEach(item => {
-                const cb = item.querySelector('input');
-                if (cb) {
-                    cb.checked = isAllSelected;
-                    item.classList.toggle('selected', isAllSelected);
-                }
-            });
-            updateSelectionStats();
-        });
-
-        function getSafeId(str) {
-            // 使用 encodeURIComponent 处理非 ASCII 字符，然后替换掉不能作为 ID 的字符
-            return 'id-' + encodeURIComponent(str).replace(/%/g, '_').replace(/\./g, '-');
-        }
-
-        let currentStatus = 'running'; // 全局任务状态
-        let lastProgress = { current: 0, total: 0 }; // 缓存最后的进度值
-
-        function updateProgress(current, total, status) {
-            const langData = i18n[currentLang];
-            
-            // 如果传入了 status，更新全局状态
-            if (status) {
-                currentStatus = status;
-            }
-
-            // 如果传入了进度值，更新缓存；否则使用缓存值
-            if (current !== null && current !== undefined) lastProgress.current = parseInt(current);
-            if (total !== null && total !== undefined) lastProgress.total = parseInt(total);
-
-            const curr = lastProgress.current;
-            const tot = lastProgress.total;
-            let percent = tot > 0 ? Math.round((curr / tot) * 100) : 0;
-            if (percent > 100) percent = 100;
-            
-            progressBarFill.style.width = `${percent}%`;
-            progressStats.textContent = `${curr} / ${tot} (${percent}%)`;
-            
-            const statusPill = document.getElementById('statusPill');
-            const statusText = document.getElementById('statusText');
-            
-            // 使用全局状态 currentStatus 来决定 UI
-            if (currentStatus === 'paused') {
-                progressBarFill.classList.add('paused');
-                statusPill.className = 'status-pill paused';
-                statusText.textContent = langData.taskPaused;
-                progressTitle.textContent = langData.taskPaused;
-            } else {
-                progressBarFill.classList.remove('paused');
-                statusPill.className = 'status-pill running';
-                statusText.textContent = percent === 100 ? langData.processingComplete : langData.optimizing;
-                progressTitle.textContent = percent === 100 ? langData.processingComplete : langData.optimizing;
-            }
-        }
-
-        let isReconnecting = false;
-        function initSSE() {
-            if (isReconnecting) return;
-            
-            if (eventSource) {
-                eventSource.onmessage = null;
-                eventSource.onerror = null;
-                eventSource.close();
-                eventSource = null;
-            }
-            
-            // 延迟一小段时间初始化，确保页面加载稳定
-            setTimeout(() => {
-                try {
-                    eventSource = new EventSource('/progress');
-                    
-                    eventSource.onopen = () => {
-                        console.log("SSE connected successfully");
-                        isReconnecting = false;
-                    };
-
-                    eventSource.onerror = (err) => {
-                        if (isReconnecting) return;
-                        isReconnecting = true;
-                        
-                        console.warn("SSE connection error, closing to retry...");
-                        if (eventSource) {
-                            eventSource.close();
-                            eventSource = null;
-                        }
-                        // 3秒后尝试重新连接
-                        setTimeout(() => {
-                            isReconnecting = false;
-                            initSSE();
-                        }, 3000);
-                    };
-
-                    eventSource.onmessage = (event) => {
-                        const data = JSON.parse(event.data);
-                        const langData = i18n[currentLang];
-                        
-                        switch(data.type) {
-                            case 'init':
-                                if (data.status === 'running' || data.status === 'paused') {
-                                    showJobUI();
-                                    updateProgress(data.current, data.total, data.status);
-                                    if (data.status === 'paused') {
-                                        pauseBtn.style.display = 'none';
-                                        resumeBtn.style.display = 'inline-flex';
-                                    }
-                                }
-                                break;
-
-                            case 'status':
-                                if (data.status === 'running') {
-                                    showJobUI();
-                                    updateProgress(0, data.total, 'running');
-                                    pauseBtn.style.display = 'inline-flex';
-                                    resumeBtn.style.display = 'none';
-                                    addLog(langData.startBtn + '...', 'info');
-                                } else if (data.status === 'paused') {
-                                    updateProgress(null, null, 'paused');
-                                    pauseBtn.style.display = 'none';
-                                    resumeBtn.style.display = 'inline-flex';
-                                } else if (data.status === 'completed') {
-                                    updateProgress(data.total, data.total, 'running');
-                                    finishJob(data.results);
-                                } else if (data.status === 'cancelled') {
-                                    resetUI();
-                                }
-                                break;
-
-                            case 'log':
-                                addLog(data.message, 'info');
-                                break;
-
-                            case 'progress':
-                                // 不再强制传 'running'，而是让 updateProgress 使用当前的全局状态
-                                updateProgress(data.current, data.total); 
-                                
-                                if (data.result) {
-                                    const res = data.result;
-                                    const statusText = res.status === 'success' ? langData.optimized : langData.failed;
-                                    addLog(`${statusText}: ${res.file} (${res.originalSize} → ${res.newSize || 'Error'})`, res.status);
-                                }
-                                break;
-                        }
-                    };
-                } catch (e) {
-                    console.error("Failed to create EventSource:", e);
-                    setTimeout(() => {
-                        isReconnecting = false;
-                        initSSE();
-                    }, 5000);
-                }
-            }, 500);
-        }
-
-        function showJobUI() {
-            switchPhase('phase-work');
-            // Ensure we are at the top of the work phase
-            phaseWork.scrollIntoView({ behavior: 'smooth' });
-        }
-
-        function resetUI() {
-            const langData = i18n[currentLang];
-            switchPhase('phase-scan');
-            
-            // Restore folder tree visibility if it was open
-            if (currentFolders.length > 0 || currentFiles.length > 0) {
-                folderTree.style.display = 'block';
-            }
-
-            // Check checkboxes to restore compress button state
-            const checkedCbs = folderList.querySelectorAll('input:checked');
-            compressBtn.disabled = checkedCbs.length === 0;
-            compressBtn.style.opacity = checkedCbs.length > 0 ? '1' : '0.5';
-            
-            progressBarFill.style.width = '0%';
-            logContainer.innerHTML = '';
-            cancelBtn.textContent = langData.cancel;
-        }
-
-        function finishJob(results) {
-            const langData = i18n[currentLang];
-            switchPhase('phase-result');
-            
-            resultSummary.textContent = langData.processedCount.replace('{count}', results.length);
-            
-            let html = `
-                <table class="result-table">
-                    <thead>
-                        <tr>
-                            <th>${langData.tableFile}</th>
-                            <th>${langData.tableOriginal}</th>
-                            <th>${langData.tableOptimized}</th>
-                            <th>${langData.tableStatus}</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            `;
-            
-            results.forEach(res => { 
-                const isSuccess = res.status === 'success';
-                html += `
-                    <tr>
-                        <td style="max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${res.file}</td>
-                        <td style="color: var(--text-dim); font-family: 'Roboto Mono', monospace;">${res.originalSize || '-'}</td>
-                        <td style="font-weight: 600; font-family: 'Roboto Mono', monospace; color: ${isSuccess ? 'var(--accent-green)' : 'inherit'}">${res.newSize || '-'}</td>
-                        <td>
-                            <span class="status-badge status-${isSuccess ? 'success' : 'error'}">
-                                ${isSuccess ? langData.tableSuccess : langData.tableError}
-                            </span>
-                        </td>
-                    </tr>
-                `;
-            });
-            
-            html += `</tbody></table>`;
-            resultTableContainer.innerHTML = html;
-            addLog(langData.processingComplete + '!', 'success');
-        }
-
-        // 页面卸载前清理连接
-        window.addEventListener('beforeunload', () => {
-            if (eventSource) {
-                eventSource.close();
-            }
-        });
-
-        initSSE();
-
-        pauseBtn.addEventListener('click', async () => {
-            const originalText = pauseBtn.innerHTML;
-            pauseBtn.disabled = true;
-            pauseBtn.innerHTML = `<div class="spinner" style="width:14px;height:14px;border-width:2px;"></div>`;
-            try {
-                // 立即切换 UI 状态
-                updateProgress(null, null, 'paused');
-                pauseBtn.style.display = 'none';
-                resumeBtn.style.display = 'inline-flex';
-                await fetch('/job/pause', { method: 'POST' });
-            } catch (err) {
-                // 如果失败，恢复状态
-                updateProgress(null, null, 'running');
-                pauseBtn.style.display = 'inline-flex';
-                resumeBtn.style.display = 'none';
-                console.error('Pause failed:', err);
-            } finally {
-                pauseBtn.disabled = false;
-                pauseBtn.innerHTML = originalText;
-            }
-        });
-
-        resumeBtn.addEventListener('click', async () => {
-            const originalText = resumeBtn.innerHTML;
-            resumeBtn.disabled = true;
-            resumeBtn.innerHTML = `<div class="spinner" style="width:14px;height:14px;border-width:2px;"></div>`;
-            try {
-                // 立即切换 UI 状态
-                updateProgress(null, null, 'running');
-                resumeBtn.style.display = 'none';
-                pauseBtn.style.display = 'inline-flex';
-                await fetch('/job/resume', { method: 'POST' });
-            } catch (err) {
-                // 如果失败，恢复状态
-                updateProgress(null, null, 'paused');
-                resumeBtn.style.display = 'inline-flex';
-                pauseBtn.style.display = 'none';
-                console.error('Resume failed:', err);
-            } finally {
-                resumeBtn.disabled = false;
-                resumeBtn.innerHTML = originalText;
-            }
-        });
-
-        cancelBtn.addEventListener('click', async () => {
-            const langData = i18n[currentLang];
-            if (cancelBtn.textContent === langData.cancel) {
-                if (!confirm(langData.cancelConfirm)) return;
-                await fetch('/job/cancel', { method: 'POST' });
-            }
-            resetUI();
-        });
-
-        scanBtn.addEventListener('click', async () => {
-            const langData = i18n[currentLang];
-            const folderPath = folderPathInput.value.trim();
-            if (!folderPath) return;
-
-            scanBtn.disabled = true;
-            scanBtn.innerHTML = `<div class="spinner"></div> ${langData.scanning}`;
-
-            try {
-                const response = await fetch('/scan', {
+        /**
+         * 4. 业务逻辑 (Core Services)
+         */
+        const ApiService = {
+            async scan(folderPath) {
+                const res = await fetch('/scan', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ folderPath })
                 });
-
-                const data = await response.json();
-                if (response.ok) {
-                    currentFolders = data.folders || [];
-                    currentFiles = data.files || [];
-                    currentRoot = data.root || null;
-                    isAllSelected = false;
-                    selectAllCheckbox.checked = false;
-                    folderTree.style.display = 'block';
-                    renderFolderList();
-                } else {
-                    alert(data.error || 'Scan failed');
-                }
-            } catch (error) {
-                console.error('Scan error:', error);
-                alert('Scan failed');
-            } finally {
-                scanBtn.disabled = false;
-                scanBtn.textContent = langData.scanBtn;
-            }
-        });
-
-        compressBtn.addEventListener('click', async () => {
-            const langData = i18n[currentLang];
-            let selectedPaths = Array.from(folderList.querySelectorAll('input[type="checkbox"]:checked'))
-                .map(cb => cb.value);
-
-            // 如果全选了子目录，或者用户期望，这里可以包含根目录
-            // 在逻辑上，如果全选了，我们就把 root.path 也加进去（如果它不在列表里）
-            if (isAllSelected && currentRoot) {
-                if (!selectedPaths.includes(currentRoot.path)) {
-                    selectedPaths.push(currentRoot.path);
-                }
-            }
-
-            if (selectedPaths.length === 0) return;
-
-            // 切换到任务界面
-            showJobUI();
-            
-            // 清理之前的日志和进度
-            logContainer.innerHTML = '';
-            updateProgress(0, 100); // 重置总进度条
-
-            addLog(langData.initLog.replace('{count}', selectedPaths.length));
-
-            const doBackup = document.getElementById('backupCheckbox').checked;
-
-            try {
-                const response = await fetch('/compress', {
+                if (!res.ok) throw new Error(await res.text());
+                return res.json();
+            },
+            async startCompress(payload) {
+                const res = await fetch('/compress', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        selectedPaths,
-                        doBackup,
-                        rootPath: currentRoot.path
-                    })
+                    body: JSON.stringify(payload)
                 });
-
-                if (!response.ok) {
-                    const data = await response.json();
-                    addLog(`Failed: ${data.error}`, 'error');
-                    // 报错时不重置 UI，让用户看到日志
-                    compressBtn.disabled = false;
-                    compressBtn.style.opacity = '1';
-                }
-            } catch (error) {
-                addLog(langData.networkError, 'error');
-                compressBtn.disabled = false;
-                compressBtn.style.opacity = '1';
+                return res.json();
+            },
+            async jobAction(action) {
+                return fetch(`/job/${action}`, { method: 'POST' }).then(r => r.json());
             }
-        });
+        };
+
+        const SSEManager = {
+            connect() {
+                if (AppState.eventSource) AppState.eventSource.close();
+                
+                AppState.eventSource = new EventSource('/progress');
+                
+                AppState.eventSource.onmessage = (e) => {
+                    const data = JSON.parse(e.data);
+                    this.handleMessage(data);
+                };
+
+                AppState.eventSource.onerror = () => {
+                    console.error('SSE Connection failed');
+                    if (AppState.reconnectAttempts < AppState.maxReconnectAttempts) {
+                        AppState.reconnectAttempts++;
+                        setTimeout(() => this.connect(), 2000 * AppState.reconnectAttempts);
+                    }
+                };
+            },
+            handleMessage(data) {
+                switch(data.type) {
+                    case 'progress':
+                        UI.progressBarFill.style.width = `${data.percent}%`;
+                        UI.progressStats.textContent = `${data.current} / ${data.total} (${data.percent}%)`;
+                        break;
+                    case 'log':
+                        addLog(data.message);
+                        break;
+                    case 'status':
+                        this.handleStatusChange(data);
+                        break;
+                }
+            },
+            handleStatusChange(data) {
+                if (data.status === 'completed') {
+                    switchPhase('phase-result');
+                    renderResults(data.results);
+                } else if (data.status === 'paused') {
+                    UI.statusText.textContent = i18n[AppState.lang].taskPaused;
+                    UI.pauseBtn.style.display = 'none';
+                    UI.resumeBtn.style.display = 'inline-block';
+                } else if (data.status === 'running') {
+                    UI.statusText.textContent = i18n[AppState.lang].optimizing;
+                    UI.pauseBtn.style.display = 'inline-block';
+                    UI.resumeBtn.style.display = 'none';
+                }
+            }
+        };
+
+        /**
+         * 5. 初始化与事件绑定
+         */
+        function init() {
+            updateI18n();
+            if (AppState.theme === 'light') document.documentElement.classList.add('light-mode');
+
+            // 扫描按钮
+            UI.scanBtn.onclick = async () => {
+                const path = UI.folderPath.value.trim();
+                if (!path) return;
+                UI.scanBtn.disabled = true;
+                try {
+                    const data = await ApiService.scan(path);
+                    AppState.currentRoot = data.root;
+                    AppState.currentFolders = data.folders;
+                    AppState.currentFiles = data.files;
+                    renderFolderList();
+                    UI.folderTree.style.display = 'block';
+                } catch (e) {
+                    alert(e.message);
+                } finally {
+                    UI.scanBtn.disabled = false;
+                }
+            };
+
+            // 压缩按钮
+            UI.compressBtn.onclick = async () => {
+                const selected = Array.from(UI.folderList.querySelectorAll('input:checked')).map(i => i.value);
+                if (!selected.length) return;
+                
+                switchPhase('phase-work');
+                UI.logContainer.innerHTML = '';
+                SSEManager.connect();
+                
+                await ApiService.startCompress({
+                    selectedPaths: selected,
+                    doBackup: UI.backupCheckbox.checked,
+                    rootPath: AppState.currentRoot.path
+                });
+            };
+
+            // 其他按钮绑定
+            UI.pauseBtn.onclick = () => ApiService.jobAction('pause');
+            UI.resumeBtn.onclick = () => ApiService.jobAction('resume');
+            UI.cancelBtn.onclick = () => {
+                if (confirm(i18n[AppState.lang].cancelConfirm)) {
+                    ApiService.jobAction('cancel');
+                    location.reload();
+                }
+            };
+            
+            UI.backupCheckbox.onchange = updateSafetyUI;
+            UI.selectAllCheckbox.onchange = (e) => {
+                UI.folderList.querySelectorAll('input[type="checkbox"]').forEach(i => i.checked = e.target.checked);
+                updateSelectionStats();
+            };
+
+            document.getElementById('themeToggle').onclick = () => {
+                document.documentElement.classList.toggle('light-mode');
+                AppState.theme = document.documentElement.classList.contains('light-mode') ? 'light' : 'dark';
+                localStorage.setItem('theme', AppState.theme);
+            };
+
+            document.querySelectorAll('.lang-btn').forEach(btn => {
+                btn.onclick = () => {
+                    AppState.lang = btn.dataset.lang;
+                    localStorage.setItem('lang', AppState.lang);
+                    updateI18n();
+                };
+            });
+        }
+
+        // --- 辅助渲染函数 ---
+        function renderFolderList() {
+            UI.folderList.innerHTML = '';
+            document.getElementById('rootPathDisplay').textContent = AppState.currentRoot.path;
+            
+            const items = [
+                ...AppState.currentFolders.map(f => ({...f, type: 'folder'})),
+                ...AppState.currentFiles.map(f => ({...f, type: 'file'}))
+            ];
+
+            items.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'folder-item';
+                div.innerHTML = `
+                    <label class="checkbox-wrapper">
+                        <input type="checkbox" value="${item.path}">
+                        <span class="checkmark"></span>
+                    </label>
+                    <span class="folder-icon">${item.type === 'folder' ? '📁' : '🖼️'}</span>
+                    <span class="folder-name">${item.name}</span>
+                `;
+                div.querySelector('input').onchange = updateSelectionStats;
+                UI.folderList.appendChild(div);
+            });
+            updateSelectionStats();
+        }
+
+        function updateSelectionStats() {
+            const checked = UI.folderList.querySelectorAll('input:checked').length;
+            const stats = document.getElementById('selectionStats');
+            stats.style.display = checked ? 'block' : 'none';
+            stats.textContent = AppState.lang === 'zh' ? `已选择 ${checked} 项` : `Selected ${checked} items`;
+            UI.compressBtn.disabled = !checked;
+            UI.compressBtn.style.opacity = checked ? 1 : 0.4;
+        }
+
+        function renderResults(results) {
+            const data = i18n[AppState.lang];
+            UI.phaseResult.querySelector('#resultSummary').textContent = data.processedCount.replace('{count}', results.length);
+            const table = document.createElement('table');
+            table.className = 'result-table';
+            table.innerHTML = `
+                <thead><tr><th>${data.tableFile}</th><th>${data.tableOriginal}</th><th>${data.tableOptimized}</th></tr></thead>
+                <tbody>
+                    ${results.map(r => `<tr><td>${r.file}</td><td>${r.originalSize}</td><td>${r.newSize}</td></tr>`).join('')}
+                </tbody>
+            `;
+            UI.resultTableContainer.innerHTML = '';
+            UI.resultTableContainer.appendChild(table);
+        }
+
+        init();
     </script>
 </body>
 </html>

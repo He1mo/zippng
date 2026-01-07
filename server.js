@@ -9,67 +9,190 @@ const port = 3000;
 app.use(express.json());
 app.use(express.static('public'));
 
-// 获取图片接口 (用于预览)
-app.get('/image', async (req, res) => {
-    const filePath = req.query.path;
-    if (!filePath) return res.status(400).send('Path is required');
-    try {
-        if (fs.existsSync(filePath)) {
-            res.sendFile(filePath);
-        } else {
-            res.status(404).send('File not found');
-        }
-    } catch (err) {
-        res.status(500).send(err.message);
+/**
+ * 任务管理器 - 封装状态与核心逻辑
+ */
+class JobManager {
+    constructor() {
+        this.reset();
+        this.clients = new Set();
+        this.concurrency = 4;
     }
-});
 
-// 任务管理状态
-let currentJob = {
-    files: [],
-    folderMap: {}, // 存储每个文件夹下的文件总数
-    folderCompletedMap: {}, // 存储每个文件夹已完成的数量
-    results: [],
-    total: 0,
-    processedCount: 0,
-    completedCount: 0,
-    status: 'idle', 
-    clients: [], 
-    concurrency: 4,
-    startTime: null,
-    selectedPaths: []
-};
+    reset() {
+        this.files = [];
+        this.results = [];
+        this.total = 0;
+        this.processedCount = 0;
+        this.completedCount = 0;
+        this.status = 'idle'; // idle, running, paused, cancelled, completed
+        this.startTime = null;
+        this.selectedPaths = [];
+        this.doBackup = false;
+        this.rootPath = null;
+        this.folderMap = {};
+        this.folderCompletedMap = {};
+    }
 
-// 推送消息到所有 SSE 客户端
-function broadcast(data) {
-    const deadClients = [];
-    currentJob.clients.forEach(client => {
-        try {
+    // SSE 广播
+    broadcast(data) {
+        const message = `data: ${JSON.stringify(data)}\n\n`;
+        for (const client of this.clients) {
             if (!client.writableEnded) {
-                client.write(`data: ${JSON.stringify(data)}\n\n`);
+                client.write(message);
             } else {
-                deadClients.push(client);
+                this.clients.delete(client);
             }
-        } catch (err) {
-            deadClients.push(client);
         }
-    });
-    
-    if (deadClients.length > 0) {
-        currentJob.clients = currentJob.clients.filter(c => !deadClients.includes(c));
+    }
+
+    addClient(res) {
+        this.clients.add(res);
+        // 发送初始状态
+        const initData = {
+            type: 'init',
+            status: this.status,
+            current: this.completedCount,
+            total: this.total
+        };
+        res.write(`data: ${JSON.stringify(initData)}\n\n`);
+    }
+
+    removeClient(res) {
+        this.clients.delete(res);
+    }
+
+    async start(files, options) {
+        this.reset();
+        this.files = files;
+        this.total = files.length;
+        this.selectedPaths = options.selectedPaths;
+        this.doBackup = options.doBackup;
+        this.rootPath = options.rootPath;
+        this.status = 'running';
+        this.startTime = new Date();
+
+        this.broadcast({
+            type: 'status',
+            status: 'running',
+            message: '任务开始',
+            total: this.total,
+            current: 0
+        });
+
+        const workers = Array(this.concurrency).fill(null).map(() => this.worker());
+        await Promise.all(workers);
+    }
+
+    async worker() {
+        while (this.status === 'running' && this.processedCount < this.total) {
+            const index = this.processedCount++;
+            if (index >= this.total) break;
+
+            const filePath = this.files[index];
+            const fileName = path.basename(filePath);
+            const folderPath = path.dirname(filePath);
+            const folderName = path.basename(folderPath);
+
+            // 1. 备份逻辑
+            if (this.doBackup && this.rootPath) {
+                try {
+                    // 将备份文件夹放在根目录的同级，命名为 "原文件夹名_backup"
+                    const backupRoot = `${this.rootPath}_backup`;
+                    const relativePath = path.relative(this.rootPath, filePath);
+                    const backupPath = path.join(backupRoot, relativePath);
+                    const backupDir = path.dirname(backupPath);
+                    
+                    // 确保备份子目录存在
+                    if (!fs.existsSync(backupDir)) {
+                        await fs.mkdir(backupDir, { recursive: true });
+                    }
+                    
+                    // 如果备份文件不存在，则复制
+                    if (!fs.existsSync(backupPath)) {
+                        await fs.copyFile(filePath, backupPath);
+                    }
+                } catch (err) {
+                    this.broadcast({ type: 'log', message: `[警告] 备份失败: ${fileName} - ${err.message}` });
+                }
+            }
+
+            // 2. 压缩逻辑
+            this.broadcast({ type: 'log', message: `正在处理 (${index + 1}/${this.total}): ${folderName}/${fileName}` });
+            const result = await compressImageCore(filePath, this.selectedPaths);
+            
+            this.results.push(result);
+            this.completedCount++;
+
+            // 3. 进度广播
+            const percent = Math.round((this.completedCount / this.total) * 100);
+            this.broadcast({
+                type: 'progress',
+                current: this.completedCount,
+                total: this.total,
+                percent: percent,
+                result: result
+            });
+
+            if (this.completedCount === this.total) {
+                this.status = 'completed';
+                this.broadcast({
+                    type: 'status',
+                    status: 'completed',
+                    message: '所有任务已完成',
+                    total: this.total,
+                    current: this.completedCount,
+                    results: this.results
+                });
+            }
+        }
+    }
+
+    pause() {
+        if (this.status === 'running') {
+            this.status = 'paused';
+            this.broadcast({ type: 'status', status: 'paused', message: '任务已暂停' });
+            return true;
+        }
+        return false;
+    }
+
+    resume() {
+        if (this.status === 'paused') {
+            this.status = 'running';
+            this.broadcast({ 
+                type: 'status', 
+                status: 'running', 
+                message: '任务已恢复',
+                total: this.total,
+                current: this.completedCount 
+            });
+            Array(this.concurrency).fill(null).forEach(() => this.worker());
+            return true;
+        }
+        return false;
+    }
+
+    cancel() {
+        this.status = 'cancelled';
+        this.broadcast({ type: 'status', status: 'cancelled', message: '任务已取消' });
+        this.reset();
     }
 }
 
-// 图片压缩核心逻辑 (抽取为独立函数)
-async function compressImage(filePath, selectedPaths) {
-    const file = path.basename(filePath);
+const jobManager = new JobManager();
+
+/**
+ * 核心压缩函数
+ */
+async function compressImageCore(filePath, selectedPaths) {
     const stats = await fs.stat(filePath);
     const originalSizeKB = stats.size / 1024;
     const originalSizeStr = originalSizeKB > 1024 
         ? `${(originalSizeKB / 1024).toFixed(2)}MB` 
         : `${originalSizeKB.toFixed(2)}KB`;
 
-    const TARGET_MAX_SIZE = 300 * 1024; // 300KB
+    const TARGET_MAX_SIZE = 300 * 1024;
     const QUALITY_FLOOR = 60;
 
     try {
@@ -77,22 +200,14 @@ async function compressImage(filePath, selectedPaths) {
         const metadata = await sharp(buffer).metadata();
         
         let quality = 85;
-        let maxWidth = metadata.width;
-        if (metadata.width > 2560) maxWidth = 2560;
-
+        let maxWidth = metadata.width > 2560 ? 2560 : metadata.width;
         let compressedBuffer = buffer;
         let attempts = 0;
-        const maxAttempts = 8;
 
-        while (attempts < maxAttempts) {
-            let pipeline = sharp(buffer).rotate();
-            pipeline = pipeline.resize({ 
-                width: Math.round(maxWidth),
-                withoutEnlargement: true,
-                fit: 'inside'
-            });
-
-            const ext = path.extname(file).toLowerCase();
+        while (attempts < 8) {
+            let pipeline = sharp(buffer).rotate().resize({ width: Math.round(maxWidth), withoutEnlargement: true, fit: 'inside' });
+            const ext = path.extname(filePath).toLowerCase();
+            
             if (ext === '.png') {
                 compressedBuffer = await pipeline.png({ quality, compressionLevel: 9 }).toBuffer();
                 if (compressedBuffer.length > 500 * 1024 && attempts > 2) {
@@ -103,410 +218,146 @@ async function compressImage(filePath, selectedPaths) {
             }
 
             if (compressedBuffer.length <= TARGET_MAX_SIZE) break;
-
-            if (quality > QUALITY_FLOOR) {
-                quality -= 10;
-            } else {
-                maxWidth *= 0.8;
-                quality = 75;
-            }
+            if (quality > QUALITY_FLOOR) quality -= 10; else { maxWidth *= 0.8; quality = 75; }
             attempts++;
         }
 
         await fs.writeFile(filePath, compressedBuffer);
-        const newSizeStr = `${(compressedBuffer.length / 1024).toFixed(2)}KB`;
-
         return {
             file: path.relative(path.dirname(selectedPaths[0]), filePath),
             fullPath: filePath,
             originalSize: originalSizeStr,
-            newSize: newSizeStr,
+            newSize: `${(compressedBuffer.length / 1024).toFixed(2)}KB`,
             status: 'success'
         };
     } catch (err) {
-        return { 
-            file: path.relative(path.dirname(selectedPaths[0]), filePath), 
-            fullPath: filePath,
-            error: err.message, 
-            status: 'error' 
-        };
+        return { file: filePath, fullPath: filePath, error: err.message, status: 'error' };
     }
 }
 
-// 并发执行器
-async function startWorker() {
-    if (currentJob.status !== 'running') return;
+// --- 路由接口 ---
 
-    while (currentJob.processedCount < currentJob.total) {
-        if (currentJob.status === 'paused' || currentJob.status === 'cancelled') return;
+app.get('/image', async (req, res) => {
+    const filePath = req.query.path;
+    if (filePath && fs.existsSync(filePath)) res.sendFile(filePath);
+    else res.status(404).send('Not found');
+});
 
-        const index = currentJob.processedCount++; 
-
-        if (index >= currentJob.total) break;
-
-        const filePath = currentJob.files[index];
-        const fileName = path.basename(filePath);
-        const folderPath = path.dirname(filePath);
-        const folderName = path.basename(folderPath);
-        
-        // 备份逻辑
-        if (currentJob.doBackup && currentJob.rootPath) {
-            try {
-                const relativePath = path.relative(currentJob.rootPath, filePath);
-                const backupPath = path.join(currentJob.rootPath, 'backup', relativePath);
-                const backupDir = path.dirname(backupPath);
-                
-                if (!fs.existsSync(backupDir)) {
-                    await fs.mkdir(backupDir, { recursive: true });
-                }
-                
-                // 仅在备份文件不存在时复制，避免重复处理
-                if (!fs.existsSync(backupPath)) {
-                    await fs.copyFile(filePath, backupPath);
-                }
-            } catch (err) {
-                console.error(`备份失败: ${filePath}`, err);
-                broadcast({ 
-                    type: 'log', 
-                    message: `[警告] 备份失败: ${fileName}, 将跳过备份直接压缩`
-                });
-            }
-        }
-        
-        broadcast({ 
-            type: 'log', 
-            message: `正在处理 (${index + 1}/${currentJob.total}): ${folderName}/${fileName}`
-        });
-
-        if (currentJob.status !== 'running') break;
-        const result = await compressImage(filePath, currentJob.selectedPaths);
-        currentJob.results.push(result);
-        currentJob.completedCount++;
-
-        // 更新文件夹进度
-        if (!currentJob.folderCompletedMap[folderPath]) {
-            currentJob.folderCompletedMap[folderPath] = 0;
-        }
-        currentJob.folderCompletedMap[folderPath]++;
-
-        const percent = Math.round((currentJob.completedCount / currentJob.total) * 100);
-        broadcast({ 
-            type: 'progress', 
-            current: currentJob.completedCount, 
-            total: currentJob.total,
-            percent: percent,
-            result: result
-        });
-
-        if (currentJob.completedCount === currentJob.total && currentJob.total > 0) {
-            currentJob.status = 'completed';
-            broadcast({ 
-                type: 'status', 
-                status: 'completed', 
-                message: '所有任务已完成',
-                total: currentJob.total,
-                current: currentJob.completedCount,
-                results: currentJob.results 
-            });
-        }
-    }
-}
-
-// SSE 接口
 app.get('/progress', (req, res) => {
-    // 强制禁用超时，这对于 SSE 至关重要
     req.socket.setKeepAlive(true);
     req.socket.setNoDelay(true);
-
-    // 设置响应头
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no');
-    
-    res.flushHeaders(); // 立即发送头部
-    
-    // 立即发送注释行以维持连接
+    res.flushHeaders();
     res.write(': ok\n\n');
 
-    currentJob.clients.push(res);
+    jobManager.addClient(res);
 
-    // 发送当前状态
-    const initData = { 
-        type: 'init', 
-        status: currentJob.status, 
-        current: currentJob.completedCount, 
-        total: currentJob.total
-    };
-    res.write(`data: ${JSON.stringify(initData)}\n\n`);
-
-    // 发送心跳防止连接断开 (每 10 秒一次)
     const heartbeat = setInterval(() => {
-        if (!res.writableEnded) {
-            res.write(': heartbeat\n\n');
-        } else {
-            clearInterval(heartbeat);
-        }
+        if (!res.writableEnded) res.write(': heartbeat\n\n');
+        else clearInterval(heartbeat);
     }, 10000);
 
-    // 监听连接断开
     req.on('close', () => {
         clearInterval(heartbeat);
-        currentJob.clients = currentJob.clients.filter(c => c !== res);
+        jobManager.removeClient(res);
     });
 });
 
-// 暂停/恢复/取消接口
-app.post('/job/pause', (req, res) => {
-    if (currentJob.status === 'running') {
-        currentJob.status = 'paused';
-        res.json({ success: true });
-    } else {
-        res.status(400).json({ error: '当前没有运行中的任务' });
-    }
-});
-
-app.post('/job/resume', (req, res) => {
-    if (currentJob.status === 'paused') {
-        currentJob.status = 'running';
-        broadcast({ 
-            type: 'status', 
-            status: 'running', 
-            message: '任务已恢复',
-            total: currentJob.total,
-            current: currentJob.completedCount
-        });
-        // 重启 worker
-        for (let i = 0; i < currentJob.concurrency; i++) {
-            startWorker();
-        }
-        res.json({ success: true });
-    } else {
-        res.status(400).json({ error: '任务不处于暂停状态' });
-    }
-});
-
-app.post('/job/cancel', (req, res) => {
-    currentJob.status = 'cancelled';
-    currentJob.files = [];
-    currentJob.results = [];
-    currentJob.processedCount = 0;
-    currentJob.completedCount = 0;
-    currentJob.total = 0;
-    res.json({ success: true });
-});
-
-// 递归获取所有子文件夹
-async function getSubfolders(dir, depth = 0, maxDepth = 3) {
-    if (depth > maxDepth) return [];
-    
-    let subfolders = [];
-    try {
-        const items = await fs.readdir(dir, { withFileTypes: true });
-        for (const item of items) {
-            if (item.isDirectory() && !item.name.startsWith('.') && item.name !== 'node_modules') {
-                const fullPath = path.join(dir, item.name);
-                // 排除根目录自身（虽然 readdir 不会返回 .，但为了稳妥）
-                if (path.resolve(fullPath) === path.resolve(dir)) continue;
-
-                const stats = await fs.stat(fullPath);
-                subfolders.push({
-                    name: item.name,
-                    path: fullPath,
-                    depth: depth,
-                    mtime: stats.mtimeMs
-                });
-                // 递归获取更深层
-                const nested = await getSubfolders(fullPath, depth + 1, maxDepth);
-                subfolders = subfolders.concat(nested);
-            }
-        }
-    } catch (err) {
-        console.error(`读取目录 ${dir} 失败:`, err);
-    }
-    return subfolders;
-}
-
-// 递归获取文件夹下所有图片文件
-async function getAllImageFiles(targetPath) {
-    let results = [];
-    try {
-        const stats = await fs.stat(targetPath);
-        if (stats.isFile()) {
-            const ext = path.extname(targetPath).toLowerCase();
-            if (ext === '.jpg' || ext === '.jpeg' || ext === '.png') {
-                return [targetPath];
-            }
-            return [];
-        }
-
-        const list = await fs.readdir(targetPath, { withFileTypes: true });
-        for (const file of list) {
-            const fullPath = path.join(targetPath, file.name);
-            if (file.isDirectory()) {
-                results = results.concat(await getAllImageFiles(fullPath));
-            } else {
-                const ext = path.extname(file.name).toLowerCase();
-                if (ext === '.jpg' || ext === '.jpeg' || ext === '.png') {
-                    results.push(fullPath);
-                }
-            }
-        }
-    } catch (err) {
-        console.error(`读取 ${targetPath} 失败:`, err);
-    }
-    return results;
-}
-
-// 扫描目录接口
 app.post('/scan', async (req, res) => {
     const { folderPath } = req.body;
-    if (!folderPath) return res.status(400).json({ error: '路径不能为空' });
+    if (!folderPath || !fs.existsSync(folderPath)) return res.status(400).json({ error: '路径无效' });
 
     try {
-        if (!fs.existsSync(folderPath)) {
-            return res.status(400).json({ error: '路径不存在' });
-        }
-
-        const absolutePath = path.resolve(folderPath);
-        const stats = await fs.stat(absolutePath);
-
-        // 如果输入的是一个文件
+        const absPath = path.resolve(folderPath);
+        const stats = await fs.stat(absPath);
+        
         if (stats.isFile()) {
-            const ext = path.extname(absolutePath).toLowerCase();
-            const isImage = ['.jpg', '.jpeg', '.png'].includes(ext);
-            const imageFile = isImage ? [{
-                name: path.basename(absolutePath),
-                path: absolutePath,
-                size: stats.size,
-                mtime: stats.mtimeMs
-            }] : [];
-
+            const isImg = ['.jpg', '.jpeg', '.png'].includes(path.extname(absPath).toLowerCase());
             return res.json({
-                root: {
-                    name: path.dirname(absolutePath),
-                    path: path.dirname(absolutePath),
-                    hasImages: isImage
-                },
+                root: { name: path.dirname(absPath), path: path.dirname(absPath), hasImages: isImg },
                 folders: [],
-                files: imageFile
+                files: isImg ? [{ name: path.basename(absPath), path: absPath, size: stats.size }] : []
             });
         }
 
-        // 如果是文件夹
-        const subfolders = await getSubfolders(absolutePath);
-        
-        // 获取当前目录下的图片文件
-        const files = await fs.readdir(absolutePath, { withFileTypes: true });
+        const subfolders = await getSubfolders(absPath);
+        const files = await fs.readdir(absPath, { withFileTypes: true });
         const imageFiles = [];
-        
         for (const f of files) {
-            if (!f.isDirectory()) {
-                const ext = path.extname(f.name).toLowerCase();
-                if (['.jpg', '.jpeg', '.png'].includes(ext)) {
-                    const filePath = path.join(absolutePath, f.name);
-                    const fileStats = await fs.stat(filePath);
-                    imageFiles.push({
-                        name: f.name,
-                        path: filePath,
-                        size: fileStats.size,
-                        mtime: fileStats.mtimeMs
-                    });
-                }
+            if (!f.isDirectory() && ['.jpg', '.jpeg', '.png'].includes(path.extname(f.name).toLowerCase())) {
+                const fPath = path.join(absPath, f.name);
+                const fStats = await fs.stat(fPath);
+                imageFiles.push({ name: f.name, path: fPath, size: fStats.size });
             }
         }
-
-        res.json({ 
-            root: {
-                name: path.basename(absolutePath) || absolutePath,
-                path: absolutePath,
-                hasImages: imageFiles.length > 0
-            },
-            folders: subfolders,
-            files: imageFiles 
-        });
-    } catch (error) {
-        console.error('扫描失败:', error);
-        res.status(500).json({ error: '服务器内部错误' });
+        res.json({ root: { name: path.basename(absPath), path: absPath, hasImages: imageFiles.length > 0 }, folders: subfolders, files: imageFiles });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
 });
 
 app.post('/compress', async (req, res) => {
     const { selectedPaths, doBackup, rootPath } = req.body;
-
-    if (!selectedPaths || !Array.isArray(selectedPaths) || selectedPaths.length === 0) {
-        return res.status(400).json({ error: '未选择任何文件夹' });
-    }
-
-    if (currentJob.status === 'running') {
-        return res.status(400).json({ error: '当前已有任务在运行中' });
-    }
+    if (!selectedPaths?.length) return res.status(400).json({ error: '未选择路径' });
+    if (jobManager.status === 'running') return res.status(400).json({ error: '任务运行中' });
 
     try {
         const fileSet = new Set();
-        const folderMap = {};
-        const folderCompletedMap = {};
-
-        for (const folderPath of selectedPaths) {
-            if (fs.existsSync(folderPath)) {
-                const files = await getAllImageFiles(folderPath);
-                // 记录该文件夹下的图片数量（注意：这里依然包含可能被其他文件夹包含的图片，但在总进度中我们会去重）
-                folderMap[folderPath] = files.length;
-                folderCompletedMap[folderPath] = 0;
-                
-                files.forEach(f => fileSet.add(f));
-            }
+        for (const p of selectedPaths) {
+            const files = await getAllImageFiles(p);
+            files.forEach(f => fileSet.add(f));
         }
+        const uniqueFiles = Array.from(fileSet);
+        if (!uniqueFiles.length) return res.json({ message: '无图片', count: 0 });
 
-        const allUniqueFiles = Array.from(fileSet);
-
-        if (allUniqueFiles.length === 0) {
-            return res.json({ message: '所选文件夹下没有发现图片', count: 0 });
-        }
-
-        // 初始化任务
-        currentJob.files = allUniqueFiles;
-        currentJob.folderMap = folderMap;
-        currentJob.folderCompletedMap = folderCompletedMap;
-        currentJob.selectedPaths = selectedPaths;
-        currentJob.doBackup = !!doBackup;
-        currentJob.rootPath = rootPath;
-        currentJob.total = allUniqueFiles.length;
-        currentJob.processedCount = 0;
-        currentJob.completedCount = 0;
-        currentJob.results = [];
-        currentJob.status = 'running';
-        currentJob.startTime = new Date();
-
-        // 异步启动处理
-        broadcast({ 
-            type: 'status', 
-            status: 'running', 
-            message: '任务开始', 
-            total: currentJob.total,
-            current: 0
-        });
-        
-        // 启动多个 worker 并行处理
-        const workers = Array(currentJob.concurrency).fill(null).map(() => startWorker());
-        Promise.all(workers).catch(err => console.error('Worker error:', err));
-
-        res.json({ message: '任务已启动', count: allUniqueFiles.length });
-    } catch (error) {
-        console.error('启动任务失败:', error);
-        res.status(500).json({ error: '服务器内部错误' });
+        jobManager.start(uniqueFiles, { selectedPaths, doBackup, rootPath });
+        res.json({ message: '已启动', count: uniqueFiles.length });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
 });
 
-process.on('uncaughtException', (err) => {
-    console.error('未捕获的异常:', err);
-});
+app.post('/job/pause', (req, res) => res.json({ success: jobManager.pause() }));
+app.post('/job/resume', (req, res) => res.json({ success: jobManager.resume() }));
+app.post('/job/cancel', (req, res) => { jobManager.cancel(); res.json({ success: true }); });
 
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('未处理的 Promise 拒绝:', reason);
-});
+// --- 工具函数 ---
 
-app.listen(port, () => {
-    console.log('Server is starting...');
-    console.log(`服务器运行在 http://localhost:${port}`);
-});
+async function getSubfolders(dir, depth = 0, maxDepth = 3) {
+    if (depth > maxDepth) return [];
+    let folders = [];
+    try {
+        const items = await fs.readdir(dir, { withFileTypes: true });
+        for (const item of items) {
+            if (item.isDirectory() && !item.name.startsWith('.') && item.name !== 'node_modules') {
+                const full = path.join(dir, item.name);
+                folders.push({ name: item.name, path: full, depth });
+                folders = folders.concat(await getSubfolders(full, depth + 1, maxDepth));
+            }
+        }
+    } catch (e) {}
+    return folders;
+}
+
+async function getAllImageFiles(target) {
+    let res = [];
+    try {
+        const s = await fs.stat(target);
+        if (s.isFile()) return ['.jpg', '.jpeg', '.png'].includes(path.extname(target).toLowerCase()) ? [target] : [];
+        const list = await fs.readdir(target, { withFileTypes: true });
+        for (const f of list) {
+            const full = path.join(target, f.name);
+            if (f.isDirectory()) res = res.concat(await getAllImageFiles(full));
+            else if (['.jpg', '.jpeg', '.png'].includes(path.extname(f.name).toLowerCase())) res.push(full);
+        }
+    } catch (e) {}
+    return res;
+}
+
+process.on('uncaughtException', (err) => console.error('Uncaught Exception:', err));
+process.on('unhandledRejection', (reason) => console.error('Unhandled Rejection:', reason));
+
+app.listen(port, () => console.log(`Server running at http://localhost:${port}`));
