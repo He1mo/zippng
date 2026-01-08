@@ -36,7 +36,7 @@ const i18n = {
         tableSuccess: '成功',
         tableError: '失败',
         checkLog: '更多结果请查看上方日志',
-        initLog: '正在初始化 {count} 个文件夹的优化任务...',
+        initLog: '正在初始化 {count} 个文件的优化任务...',
         cancelConfirm: '确定要取消当前任务吗？',
         networkError: '网络错误',
         optimized: '已优化',
@@ -77,7 +77,7 @@ const i18n = {
         tableSuccess: 'Success',
         tableError: 'Error',
         checkLog: 'Check activity log for full details',
-        initLog: 'Initializing optimization for {count} folders...',
+        initLog: 'Initializing optimization for {count} files...',
         cancelConfirm: 'Cancel current task?',
         networkError: 'Network error',
         optimized: 'Optimized',
@@ -531,28 +531,45 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const SSEManager = {
         connect() {
-            if (AppState.eventSource) AppState.eventSource.close();
-            
-            AppState.eventSource = new EventSource('/progress');
-            
-            AppState.eventSource.onmessage = (e) => {
-                const data = JSON.parse(e.data);
-                this.handleMessage(data);
-            };
+            return new Promise((resolve, reject) => {
+                if (AppState.eventSource) AppState.eventSource.close();
+                
+                AppState.eventSource = new EventSource('/progress');
+                
+                AppState.eventSource.onopen = () => {
+                    console.log('SSE Connection established');
+                    resolve();
+                };
 
-            AppState.eventSource.onerror = () => {
-                console.error('SSE Connection failed');
-                if (AppState.reconnectAttempts < AppState.maxReconnectAttempts) {
-                    AppState.reconnectAttempts++;
-                    setTimeout(() => this.connect(), 2000 * AppState.reconnectAttempts);
-                }
-            };
+                AppState.eventSource.onmessage = (e) => {
+                    const data = JSON.parse(e.data);
+                    this.handleMessage(data);
+                };
+
+                AppState.eventSource.onerror = (err) => {
+                    console.error('SSE Connection failed', err);
+                    if (AppState.eventSource.readyState === EventSource.CONNECTING) {
+                        // 还在尝试连接中，不一定报错
+                        return;
+                    }
+                    if (AppState.reconnectAttempts < AppState.maxReconnectAttempts) {
+                        AppState.reconnectAttempts++;
+                        setTimeout(() => this.connect(), 2000 * AppState.reconnectAttempts);
+                    }
+                    reject(err);
+                };
+            });
         },
         handleMessage(data) {
             switch(data.type) {
                 case 'progress':
                     UI.progressBarFill.style.width = `${data.percent}%`;
-                    UI.progressStats.textContent = `${data.current} / ${data.total} (${data.percent}%)`;
+                    let processingInfo = '';
+                    if (data.processed > data.current) {
+                        const processingCount = data.processed - data.current;
+                        processingInfo = AppState.lang === 'zh' ? ` (正在处理 ${processingCount} 个...)` : ` (Processing ${processingCount}...)`;
+                    }
+                    UI.progressStats.textContent = `${data.current} / ${data.total} (${data.percent}%)${processingInfo}`;
                     break;
                 case 'log':
                     addLog(data.message);
@@ -574,6 +591,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 UI.statusText.textContent = i18n[AppState.lang].optimizing;
                 UI.pauseBtn.style.display = 'inline-block';
                 UI.resumeBtn.style.display = 'none';
+                
+                // 初始化进度显示
+                if (data.total !== undefined) {
+                    UI.progressStats.textContent = `${data.current || 0} / ${data.total} (0%)`;
+                    UI.progressBarFill.style.width = '0%';
+                }
             }
         }
     };
@@ -669,13 +692,18 @@ document.addEventListener('DOMContentLoaded', () => {
         switchPhase('phase-work');
         UI.logContainer.innerHTML = '';
         addLog(i18n[AppState.lang].initLog.replace('{count}', selected.length), 'info');
-        SSEManager.connect();
         
-        await ApiService.startCompress({
-            selectedPaths: selected,
-            doBackup: UI.backupCheckbox.checked,
-            rootPath: AppState.currentRootPath
-        });
+        try {
+            await SSEManager.connect();
+            
+            await ApiService.startCompress({
+                selectedPaths: selected,
+                doBackup: UI.backupCheckbox.checked,
+                rootPath: AppState.currentRootPath
+            });
+        } catch (err) {
+            addLog(`Failed to connect to server: ${err.message}`, 'error');
+        }
     };
 
     UI.pauseBtn.onclick = () => ApiService.jobAction('pause');

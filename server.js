@@ -138,6 +138,13 @@ class JobManager {
             }
 
             // 2. 压缩逻辑
+            this.broadcast({ 
+                type: 'progress', 
+                current: this.completedCount, 
+                processed: this.processedCount,
+                total: this.total,
+                percent: Math.round((this.completedCount / this.total) * 100)
+            });
             this.broadcast({ type: 'log', message: `正在处理 (${index + 1}/${this.total}): ${folderName}/${fileName}` });
             const result = await compressImageCore(filePath, this.selectedPaths);
             
@@ -149,6 +156,7 @@ class JobManager {
             this.broadcast({
                 type: 'progress',
                 current: this.completedCount,
+                processed: this.processedCount,
                 total: this.total,
                 percent: percent,
                 result: result
