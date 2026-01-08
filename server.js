@@ -1,13 +1,33 @@
-const express = require('express');
+const fs = require('fs').promises;
+const fsSync = require('fs');
 const path = require('path');
-const fs = require('fs-extra');
+const express = require('express');
 const sharp = require('sharp');
+const fse = require('fs-extra'); // 仅用于 backup 等复杂操作
+
+// 禁用缓存以节省内存并提高稳定性
+sharp.cache(false);
 
 const app = express();
 const port = 3000;
 
 app.use(express.json());
 app.use(express.static('public'));
+
+// 提供缩略图接口
+app.get('/thumbnail', async (req, res) => {
+    const { imgPath } = req.query;
+    if (!imgPath || !fsSync.existsSync(imgPath)) return res.status(404).send('Not found');
+    try {
+        const buffer = await sharp(imgPath)
+            .resize(80, 80, { fit: 'cover' })
+            .toFormat('webp')
+            .toBuffer();
+        res.type('image/webp').send(buffer);
+    } catch (e) {
+        res.status(500).send(e.message);
+    }
+});
 
 /**
  * 任务管理器 - 封装状态与核心逻辑
@@ -104,12 +124,12 @@ class JobManager {
                     const backupDir = path.dirname(backupPath);
                     
                     // 确保备份子目录存在
-                    if (!fs.existsSync(backupDir)) {
+                    if (!fsSync.existsSync(backupDir)) {
                         await fs.mkdir(backupDir, { recursive: true });
                     }
                     
                     // 如果备份文件不存在，则复制
-                    if (!fs.existsSync(backupPath)) {
+                    if (!fsSync.existsSync(backupPath)) {
                         await fs.copyFile(filePath, backupPath);
                     }
                 } catch (err) {
@@ -189,8 +209,8 @@ async function compressImageCore(filePath, selectedPaths) {
     const stats = await fs.stat(filePath);
     const originalSizeKB = stats.size / 1024;
     const originalSizeStr = originalSizeKB > 1024 
-        ? `${(originalSizeKB / 1024).toFixed(2)}MB` 
-        : `${originalSizeKB.toFixed(2)}KB`;
+        ? `${(originalSizeKB / 1024).toFixed(2)} MB` 
+        : `${originalSizeKB.toFixed(2)} KB`;
 
     const TARGET_MAX_SIZE = 300 * 1024;
     const QUALITY_FLOOR = 60;
@@ -209,9 +229,16 @@ async function compressImageCore(filePath, selectedPaths) {
             const ext = path.extname(filePath).toLowerCase();
             
             if (ext === '.png') {
-                compressedBuffer = await pipeline.png({ quality, compressionLevel: 9 }).toBuffer();
+                // PNG 压缩优化：使用 palette 模式通常能大幅减小体积
+                compressedBuffer = await pipeline.png({ 
+                    compressionLevel: 9,
+                    palette: true,
+                    colors: 256
+                }).toBuffer();
+                
+                // 如果 PNG 还是太大，尝试转换为 JPEG
                 if (compressedBuffer.length > 500 * 1024 && attempts > 2) {
-                    compressedBuffer = await pipeline.jpeg({ quality, mozjpeg: true }).toBuffer();
+                    compressedBuffer = await pipeline.jpeg({ quality: 80, mozjpeg: true }).toBuffer();
                 }
             } else {
                 compressedBuffer = await pipeline.jpeg({ quality, mozjpeg: true }).toBuffer();
@@ -223,15 +250,34 @@ async function compressImageCore(filePath, selectedPaths) {
         }
 
         await fs.writeFile(filePath, compressedBuffer);
+
+        // 优化路径显示：父目录/文件名
+        const parentName = path.basename(path.dirname(filePath));
+        const fileName = path.basename(filePath);
+
         return {
-            file: path.relative(path.dirname(selectedPaths[0]), filePath),
+            file: `${parentName}/${fileName}`,
             fullPath: filePath,
             originalSize: originalSizeStr,
-            newSize: `${(compressedBuffer.length / 1024).toFixed(2)}KB`,
-            status: 'success'
+            optimizedSize: `${(compressedBuffer.length / 1024).toFixed(2)} KB`,
+            success: true
         };
     } catch (err) {
-        return { file: filePath, fullPath: filePath, error: err.message, status: 'error' };
+        console.error(`[压缩失败] ${filePath}:`, err);
+        // 获取更详细的错误原因
+        let errorMsg = err.message;
+        if (err.code === 'EBUSY') errorMsg = '文件被占用 (EBUSY)';
+        else if (err.code === 'ENOENT') errorMsg = '文件不存在 (ENOENT)';
+        else if (err.code === 'EACCES') errorMsg = '无权访问 (EACCES)';
+
+        return { 
+            file: path.basename(filePath), 
+            fullPath: filePath, 
+            originalSize: originalSizeStr,
+            optimizedSize: '-',
+            success: false,
+            error: errorMsg 
+        };
     }
 }
 
@@ -239,7 +285,7 @@ async function compressImageCore(filePath, selectedPaths) {
 
 app.get('/image', async (req, res) => {
     const filePath = req.query.path;
-    if (filePath && fs.existsSync(filePath)) res.sendFile(filePath);
+    if (filePath && fsSync.existsSync(filePath)) res.sendFile(filePath);
     else res.status(404).send('Not found');
 });
 
@@ -268,32 +314,75 @@ app.get('/progress', (req, res) => {
 
 app.post('/scan', async (req, res) => {
     const { folderPath } = req.body;
-    if (!folderPath || !fs.existsSync(folderPath)) return res.status(400).json({ error: '路径无效' });
+    if (!folderPath) return res.status(400).json({ error: '路径不能为空' });
 
     try {
-        const absPath = path.resolve(folderPath);
+        const absPath = path.isAbsolute(folderPath) ? folderPath : path.resolve(folderPath);
+        if (!fsSync.existsSync(absPath)) return res.status(404).json({ error: '路径不存在' });
+
         const stats = await fs.stat(absPath);
+        let targetDir = stats.isDirectory() ? absPath : path.dirname(absPath);
         
-        if (stats.isFile()) {
-            const isImg = ['.jpg', '.jpeg', '.png'].includes(path.extname(absPath).toLowerCase());
-            return res.json({
-                root: { name: path.dirname(absPath), path: path.dirname(absPath), hasImages: isImg },
-                folders: [],
-                files: isImg ? [{ name: path.basename(absPath), path: absPath, size: stats.size }] : []
-            });
+        const entries = await fs.readdir(targetDir, { withFileTypes: true });
+        const subfolders = [];
+        const images = [];
+
+        for (const entry of entries) {
+            const fullPath = path.join(targetDir, entry.name);
+            try {
+                const entryStats = await fs.stat(fullPath);
+                if (entry.isDirectory()) {
+                    if (entry.name === '.git' || entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
+                    
+                    // 获取文件夹内的图片信息（用于显示张数和总大小）
+                    const folderImages = await getAllImageFiles(fullPath, true);
+                    let totalSize = 0;
+                    for (const img of folderImages) {
+                        try {
+                            const s = await fs.stat(img);
+                            totalSize += s.size;
+                        } catch (e) {}
+                    }
+
+                    subfolders.push({
+                        name: entry.name,
+                        path: fullPath,
+                        relativePath: entry.name,
+                        type: 'folder',
+                        size: totalSize,
+                        imageCount: folderImages.length,
+                        mtime: entryStats.mtime,
+                        thumbnail: folderImages[0] || null
+                    });
+                } else if (['.jpg', '.jpeg', '.png'].includes(path.extname(entry.name).toLowerCase())) {
+                    images.push({
+                        name: entry.name,
+                        path: fullPath,
+                        relativePath: entry.name,
+                        type: 'file',
+                        size: entryStats.size,
+                        imageCount: 1,
+                        mtime: entryStats.mtime,
+                        thumbnail: fullPath
+                    });
+                }
+            } catch (e) {}
         }
 
-        const subfolders = await getSubfolders(absPath);
-        const files = await fs.readdir(absPath, { withFileTypes: true });
-        const imageFiles = [];
-        for (const f of files) {
-            if (!f.isDirectory() && ['.jpg', '.jpeg', '.png'].includes(path.extname(f.name).toLowerCase())) {
-                const fPath = path.join(absPath, f.name);
-                const fStats = await fs.stat(fPath);
-                imageFiles.push({ name: f.name, path: fPath, size: fStats.size });
-            }
+        // 智能切换逻辑：
+        // 1. 如果有子文件夹，则只展示文件夹
+        // 2. 如果没有子文件夹，则展示图片
+        let items = [];
+        if (subfolders.length > 0) {
+            items = subfolders;
+        } else {
+            items = images;
         }
-        res.json({ root: { name: path.basename(absPath), path: absPath, hasImages: imageFiles.length > 0 }, folders: subfolders, files: imageFiles });
+
+        res.json({ 
+            rootPath: targetDir,
+            items: items 
+        });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -334,7 +423,33 @@ async function getSubfolders(dir, depth = 0, maxDepth = 3) {
         for (const item of items) {
             if (item.isDirectory() && !item.name.startsWith('.') && item.name !== 'node_modules') {
                 const full = path.join(dir, item.name);
-                folders.push({ name: item.name, path: full, depth });
+                const images = await getAllImageFiles(full, false);
+                if (images.length > 0) {
+                    let totalSize = 0;
+                    const folderFiles = [];
+                    for (const img of images) {
+                        try {
+                            const s = await fs.stat(img);
+                            totalSize += s.size;
+                            folderFiles.push({
+                                name: path.basename(img),
+                                size: s.size,
+                                mtime: s.mtime
+                            });
+                        } catch (e) {}
+                    }
+                    const stats = await fs.stat(full);
+                    folders.push({
+                        name: item.name,
+                        path: full,
+                        depth,
+                        imageCount: images.length,
+                        totalSize,
+                        mtime: stats.mtime,
+                        thumbnail: images[0],
+                        files: folderFiles
+                    });
+                }
                 folders = folders.concat(await getSubfolders(full, depth + 1, maxDepth));
             }
         }
@@ -342,7 +457,7 @@ async function getSubfolders(dir, depth = 0, maxDepth = 3) {
     return folders;
 }
 
-async function getAllImageFiles(target) {
+async function getAllImageFiles(target, recursive = true) {
     let res = [];
     try {
         const s = await fs.stat(target);
@@ -350,8 +465,11 @@ async function getAllImageFiles(target) {
         const list = await fs.readdir(target, { withFileTypes: true });
         for (const f of list) {
             const full = path.join(target, f.name);
-            if (f.isDirectory()) res = res.concat(await getAllImageFiles(full));
-            else if (['.jpg', '.jpeg', '.png'].includes(path.extname(f.name).toLowerCase())) res.push(full);
+            if (f.isDirectory()) {
+                if (recursive) res = res.concat(await getAllImageFiles(full, true));
+            } else if (['.jpg', '.jpeg', '.png'].includes(path.extname(f.name).toLowerCase())) {
+                res.push(full);
+            }
         }
     } catch (e) {}
     return res;
