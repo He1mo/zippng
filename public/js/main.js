@@ -532,9 +532,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const SSEManager = {
         connect() {
             return new Promise((resolve, reject) => {
-                if (AppState.eventSource) AppState.eventSource.close();
+                this.disconnect(); // 确保先断开旧连接
                 
                 AppState.eventSource = new EventSource('/progress');
+                AppState.reconnectAttempts = 0; // 重置重连次数
                 
                 AppState.eventSource.onopen = () => {
                     console.log('SSE Connection established');
@@ -542,23 +543,43 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
 
                 AppState.eventSource.onmessage = (e) => {
-                    const data = JSON.parse(e.data);
-                    this.handleMessage(data);
+                    if (e.data.startsWith(':')) return; // 忽略注释/心跳
+                    try {
+                        const data = JSON.parse(e.data);
+                        this.handleMessage(data);
+                    } catch (err) {
+                        console.error('Failed to parse SSE message', err);
+                    }
                 };
 
                 AppState.eventSource.onerror = (err) => {
-                    console.error('SSE Connection failed', err);
-                    if (AppState.eventSource.readyState === EventSource.CONNECTING) {
-                        // 还在尝试连接中，不一定报错
+                    // 如果 readyState 是 CLOSED，说明是主动关闭或页面刷新导致的断开，不作为错误处理
+                    if (AppState.eventSource && AppState.eventSource.readyState === EventSource.CLOSED) {
                         return;
                     }
+
+                    console.error('SSE Connection failed', err);
+                    
+                    if (AppState.eventSource && AppState.eventSource.readyState === EventSource.CONNECTING) {
+                        return;
+                    }
+
                     if (AppState.reconnectAttempts < AppState.maxReconnectAttempts) {
                         AppState.reconnectAttempts++;
+                        console.log(`Attempting to reconnect (${AppState.reconnectAttempts}/${AppState.maxReconnectAttempts})...`);
                         setTimeout(() => this.connect(), 2000 * AppState.reconnectAttempts);
+                    } else {
+                        reject(err);
                     }
-                    reject(err);
                 };
             });
+        },
+        disconnect() {
+            if (AppState.eventSource) {
+                AppState.eventSource.close();
+                AppState.eventSource = null;
+                console.log('SSE Connection closed');
+            }
         },
         handleMessage(data) {
             switch(data.type) {
@@ -581,6 +602,7 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         handleStatusChange(data) {
             if (data.status === 'completed') {
+                this.disconnect(); // 任务完成，主动断开连接
                 switchPhase('phase-result');
                 renderResults(data.results);
             } else if (data.status === 'paused') {
@@ -657,6 +679,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const path = UI.folderPath.value.trim();
         if (!path) return;
 
+        // 切换目录时断开之前的 SSE 连接
+        SSEManager.disconnect();
+
         try {
             UI.scanBtn.disabled = true;
             UI.scanBtn.textContent = i18n[AppState.lang].scanning;
@@ -711,6 +736,7 @@ document.addEventListener('DOMContentLoaded', () => {
     UI.cancelBtn.onclick = () => {
         if (confirm(i18n[AppState.lang].cancelConfirm)) {
             ApiService.jobAction('cancel');
+            SSEManager.disconnect();
             location.reload();
         }
     };
@@ -800,6 +826,40 @@ document.addEventListener('DOMContentLoaded', () => {
             updateI18n();
         };
     });
+
+    /**
+     * 6. 应用状态重置
+     */
+    function resetApp() {
+        // 1. 断开 SSE
+        SSEManager.disconnect();
+        
+        // 2. 重置全局状态
+        AppState.selectedPaths = [];
+        AppState.currentItems = [];
+        AppState.currentRootPath = '';
+        AppState.reconnectAttempts = 0;
+
+        // 3. UI 重置
+        UI.folderPath.value = '';
+        UI.folderList.innerHTML = '';
+        UI.folderTree.classList.add('hidden-element');
+        UI.selectionStats.classList.add('hidden-element');
+        UI.selectAllCheckbox.checked = false;
+        UI.logContainer.innerHTML = '';
+        UI.progressBarFill.style.width = '0%';
+        UI.progressStats.textContent = '0 / 0 (0%)';
+        UI.resultTableContainer.innerHTML = '';
+        
+        // 4. 切回扫描阶段
+        switchPhase('phase-scan');
+        
+        // 5. 更新面包屑
+        UI.breadcrumbNav.innerHTML = '';
+    }
+
+    // 暴露给全局，以便在 HTML 中使用 onclick 调用
+    window.resetApp = resetApp;
 
     // 初始化
     if (AppState.theme === 'light') document.documentElement.classList.add('light-mode');
